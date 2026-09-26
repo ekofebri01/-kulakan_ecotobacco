@@ -1,0 +1,6 @@
+{
+  "name": "ECO TOBACCO",
+  "description": "Aplikasi manajemen stok dan data kulakan tembakau dengan fitur sinkronisasi Firebase & Cloud.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
