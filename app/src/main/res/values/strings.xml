@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">ECO TOBACCO</string>
+    <string name="google_app_id">1:680872469505:web:4f89cbd24222aaaf998c00</string>
+    <string name="project_id">project-0be2da66-9971-458e-bfe</string>
+    <string name="google_api_key">AIzaSyBWw2rT7zrVogQvFs_7ExqV-Y2mN4AjNto</string>
+    <string name="default_web_client_id">680872469505-hic8du49lidqjsku9p7enbjv2ggtcpnr.apps.googleusercontent.com</string>
 </resources>

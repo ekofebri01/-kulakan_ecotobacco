@@ -123,7 +123,13 @@ class GoogleDriveSyncHelper(private val context: Context) {
         get() = sharedPrefs.getBoolean("auto_sync_enabled", true)
         set(value) = sharedPrefs.edit { putBoolean("auto_sync_enabled", value) }
 
-    fun getAuthIntent(): Intent {
+    val isConfigured: Boolean get() = clientId.isNotBlank()
+
+    fun getAuthIntent(): Intent? {
+        if (clientId.isBlank()) {
+            AppLogger.w("DriveSync", "Google OAuth Client ID belum dikonfigurasi di build.gradle.kts / Secrets")
+            return null
+        }
         val serviceConfig = AuthorizationServiceConfiguration(
             Uri.parse("https://accounts.google.com/o/oauth2/v2/auth"),
             Uri.parse("https://oauth2.googleapis.com/token")

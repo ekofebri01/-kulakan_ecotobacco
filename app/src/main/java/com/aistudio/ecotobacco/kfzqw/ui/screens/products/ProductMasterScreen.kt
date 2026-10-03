@@ -31,17 +31,21 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -67,6 +71,11 @@ fun ProductMasterScreen(
 ) {
     val products by viewModel.products.collectAsStateWithLifecycle()
     val unitOptions by viewModel.customUnits.collectAsStateWithLifecycle()
+    val isFirestoreSyncing by viewModel.isFirestoreSyncing.collectAsStateWithLifecycle()
+    val firestoreSyncProgress by viewModel.firestoreSyncProgress.collectAsStateWithLifecycle()
+    val firestoreMessage by viewModel.firestoreMessage.collectAsStateWithLifecycle()
+    val firebaseUser by viewModel.firebaseUser.collectAsStateWithLifecycle()
+    val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     val context = LocalContext.current
     var showDialog by remember { mutableStateOf(false) }
     var productToEdit by remember { mutableStateOf<ProductEntity?>(null) }
@@ -97,6 +106,28 @@ fun ProductMasterScreen(
                     }
                 },
                 actions = {
+                    IconButton(
+                        onClick = {
+                            viewModel.syncFirestore { success, msg ->
+                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        enabled = !isFirestoreSyncing
+                    ) {
+                        if (isFirestoreSyncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Sync,
+                                contentDescription = "Sinkronkan Stok",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     IconButton(onClick = { excelPickerLauncher.launch("text/comma-separated-values") }) {
                         Icon(Icons.Default.FileDownload, contentDescription = "Import Barang (CSV)", tint = MaterialTheme.colorScheme.primary)
                     }
@@ -132,6 +163,58 @@ fun ProductMasterScreen(
                 .fillMaxSize()
                 .imePadding()
         ) {
+            // Visual Progress Indicator for Firestore Stock Sync
+            if (isFirestoreSyncing) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(14.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                                Text(
+                                    text = firestoreMessage ?: "Menyinkronkan data stok ke Firestore...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                            Text(
+                                text = "${(firestoreSyncProgress * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                        LinearProgressIndicator(
+                            progress = { firestoreSyncProgress.coerceIn(0.05f, 1.0f) },
+                            modifier = Modifier.fillMaxWidth().height(4.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        )
+                    }
+                }
+            }
+
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },

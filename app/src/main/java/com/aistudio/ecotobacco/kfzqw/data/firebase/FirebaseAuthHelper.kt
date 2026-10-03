@@ -69,9 +69,10 @@ class FirebaseAuthHelper(private val context: Context) {
                     FirebaseApp.initializeApp(ctx.applicationContext)
                 } else {
                     val options = FirebaseOptions.Builder()
-                        .setApplicationId("1:863851997609:android:com_aistudio_ecotobacco")
-                        .setApiKey("AIzaSyB_Fallback_EcoTobacco_Key")
-                        .setProjectId("ais-ecotobacco")
+                        .setApplicationId("1:680872469505:web:4f89cbd24222aaaf998c00")
+                        .setApiKey("AIzaSyBWw2rT7zrVogQvFs_7ExqV-Y2mN4AjNto")
+                        .setProjectId("project-0be2da66-9971-458e-bfe")
+                        .setStorageBucket("project-0be2da66-9971-458e-bfe.firebasestorage.app")
                         .build()
                     FirebaseApp.initializeApp(ctx.applicationContext, options)
                 }

@@ -26,6 +26,7 @@ import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementPlanEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementPlanWithItems
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.TransactionEntity
+import com.aistudio.ecotobacco.kfzqw.data.remote.AppSettingsSyncModel
 import com.aistudio.ecotobacco.kfzqw.data.remote.DriveBackupFile
 import com.aistudio.ecotobacco.kfzqw.data.remote.GoogleDriveSyncHelper
 import com.aistudio.ecotobacco.kfzqw.data.remote.ProcurementItemSyncModel
@@ -73,6 +74,7 @@ class TobaccoViewModel(
     val isFirebaseLoading = firebaseAuth.isLoading
     val firebaseAuthError = firebaseAuth.authError
     val isFirestoreSyncing = firestoreSync.isSyncing
+    val firestoreSyncProgress = firestoreSync.syncProgress
     val firestoreLastSync = firestoreSync.lastSyncedTime
     val firestoreMessage = firestoreSync.syncMessage
 
@@ -140,6 +142,14 @@ class TobaccoViewModel(
     fun setCustomTextColor(colorInt: Int) {
         _customTextColor.value = colorInt
         appPrefs.edit { putInt("ui_custom_text_color", colorInt) }
+    }
+
+    fun resetUiCustomization() {
+        setFontSizeScale(1.0f)
+        setPaddingScale(1.0f)
+        setButtonHeight(56)
+        setCornerRadius(16)
+        setCustomTextColor(0)
     }
 
     fun addCustomUnit(unit: String) {
@@ -335,14 +345,20 @@ class TobaccoViewModel(
         syncHelper.handleAuthResponse(intent, onComplete)
 
     // --- FIREBASE AUTH & FIRESTORE DATA PERSISTENCE ---
-    fun signInWithGoogle(activity: Activity, onComplete: (Boolean, String?) -> Unit) {
+    fun signInWithEmail(email: String, pass: String, onComplete: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
-            val result = firebaseAuth.signInWithGoogle(activity)
+            val result = firebaseAuth.signInWithEmail(email, pass)
             if (result.isSuccess) {
                 syncFirestore()
-                onComplete(true, "Berhasil masuk: ${result.getOrNull()?.displayName ?: "Pengguna Google"}")
+                onComplete(true, "Berhasil masuk dengan Email")
             } else {
-                onComplete(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal masuk Google")
+                val signupResult = firebaseAuth.signUpWithEmail(email, pass)
+                if (signupResult.isSuccess) {
+                    syncFirestore()
+                    onComplete(true, "Akun baru dibuat & berhasil masuk")
+                } else {
+                    onComplete(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal login email")
+                }
             }
         }
     }
@@ -364,7 +380,7 @@ class TobaccoViewModel(
     }
 
     fun syncFirestore(onComplete: ((Boolean, String) -> Unit)? = null) {
-        val uid = firebaseAuth.uid ?: run {
+        val uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail ?: run {
             onComplete?.invoke(false, "Silakan login terlebih dahulu untuk sinkronisasi Cloud Firestore")
             return
         }
@@ -396,7 +412,7 @@ class TobaccoViewModel(
     }
 
     fun restoreFromFirestore(onComplete: ((Boolean, String) -> Unit)? = null) {
-        val uid = firebaseAuth.uid ?: run {
+        val uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail ?: run {
             onComplete?.invoke(false, "Silakan login terlebih dahulu untuk memulihkan dari Firestore")
             return
         }
@@ -464,6 +480,33 @@ class TobaccoViewModel(
                                 it.contentQuantity
                             )
                         },
+                        procurementPlans = repository.getAllProcurementPlansDirect().map { planWithItems ->
+                            ProcurementPlanSyncModel(
+                                id = planWithItems.plan.id,
+                                date = planWithItems.plan.date,
+                                supplierName = planWithItems.plan.supplierName,
+                                items = planWithItems.items.map { item ->
+                                    ProcurementItemSyncModel(
+                                        id = item.id,
+                                        productName = item.productName,
+                                        targetQuantity = item.targetQuantity,
+                                        estimatedUnitPrice = item.estimatedUnitPrice,
+                                        unit = item.unit,
+                                        isBought = item.isBought
+                                    )
+                                }
+                            )
+                        },
+                        appSettings = AppSettingsSyncModel(
+                            themeMode = _themeMode.value,
+                            customColor = _customColor.value,
+                            customUnits = _customUnits.value,
+                            fontSizeScale = _fontSizeScale.value,
+                            paddingScale = _paddingScale.value,
+                            buttonHeight = _buttonHeight.value,
+                            cornerRadius = _cornerRadius.value,
+                            customTextColor = _customTextColor.value
+                        ),
                         lastUpdated = System.currentTimeMillis(),
                         deletedTransactions = getDeletedTransactionKeys().toList()
                     )
@@ -923,6 +966,16 @@ class TobaccoViewModel(
                     }
                 )
             },
+            appSettings = AppSettingsSyncModel(
+                themeMode = _themeMode.value,
+                customColor = _customColor.value,
+                customUnits = _customUnits.value,
+                fontSizeScale = _fontSizeScale.value,
+                paddingScale = _paddingScale.value,
+                buttonHeight = _buttonHeight.value,
+                cornerRadius = _cornerRadius.value,
+                customTextColor = _customTextColor.value
+            ),
             lastUpdated = System.currentTimeMillis(),
             deletedTransactions = getDeletedTransactionKeys().toList()
         )
@@ -1018,7 +1071,21 @@ class TobaccoViewModel(
                 }
             }
             
-            withContext(Dispatchers.Main) { Toast.makeText(context, "Restore berhasil!", Toast.LENGTH_SHORT).show() }
+            // Restore App Settings (Theme, UI Customization, Units)
+            remoteBundle.appSettings?.let { settings ->
+                setThemeMode(settings.themeMode)
+                setCustomColor(settings.customColor)
+                setFontSizeScale(settings.fontSizeScale)
+                setPaddingScale(settings.paddingScale)
+                setButtonHeight(settings.buttonHeight)
+                setCornerRadius(settings.cornerRadius)
+                setCustomTextColor(settings.customTextColor)
+                val unitSet = settings.customUnits.toSet()
+                _customUnits.value = settings.customUnits.sorted()
+                appPrefs?.edit { putStringSet("custom_units", unitSet) }
+            }
+            
+            withContext(Dispatchers.Main) { Toast.makeText(context, "Data & Pengaturan berhasil dipulihkan!", Toast.LENGTH_SHORT).show() }
             triggerAutoSync(forceOverwriteRemote = true)
         } catch (e: Exception) {
             AppLogger.e("Restore", "Gagal restore dari device", e)

@@ -16,12 +16,12 @@ android {
     applicationId = "com.aistudio.ecotobacco.kfzqw"
     minSdk = 24
     targetSdk = 36
-    versionCode = 12
-    versionName = "4.0"
+    versionCode = 13
+    versionName = "4.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    manifestPlaceholders["appAuthRedirectScheme"] = "com.googleusercontent.apps.eco-tobacco"
-    buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"\"")
+    manifestPlaceholders["appAuthRedirectScheme"] = "com.googleusercontent.apps.680872469505-hic8du49lidqjsku9p7enbjv2ggtcpnr"
+    buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"680872469505-hic8du49lidqjsku9p7enbjv2ggtcpnr.apps.googleusercontent.com\"")
   }
 
   signingConfigs {

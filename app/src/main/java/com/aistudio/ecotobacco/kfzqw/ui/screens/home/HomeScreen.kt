@@ -33,6 +33,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.TextButton
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
+import com.aistudio.ecotobacco.kfzqw.data.remote.SyncStatus
 import com.aistudio.ecotobacco.kfzqw.ui.screens.products.EditProductDialog
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +57,7 @@ import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import android.widget.Toast
 import android.app.Activity
 import java.text.SimpleDateFormat
@@ -126,10 +128,13 @@ fun HomeScreen(
     val prodCount by viewModel.productCount.collectAsStateWithLifecycle()
     val products by viewModel.products.collectAsStateWithLifecycle()
     val unitOptions by viewModel.customUnits.collectAsStateWithLifecycle()
+    val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
 
     val firebaseUser by viewModel.firebaseUser.collectAsStateWithLifecycle()
     val isFirestoreSyncing by viewModel.isFirestoreSyncing.collectAsStateWithLifecycle()
+    val firestoreSyncProgress by viewModel.firestoreSyncProgress.collectAsStateWithLifecycle()
     val firestoreLastSync by viewModel.firestoreLastSync.collectAsStateWithLifecycle()
+    val firestoreMessage by viewModel.firestoreMessage.collectAsStateWithLifecycle()
 
     var productToEdit by remember { mutableStateOf<ProductEntity?>(null) }
     var showPriceListDialog by remember { mutableStateOf(false) }
@@ -351,7 +356,9 @@ fun HomeScreen(
                         .padding(horizontal = 16.dp.scaled, vertical = 8.dp.scaled),
                     verticalArrangement = Arrangement.spacedBy(24.dp.scaled)
                 ) {
-                    // --- FIREBASE AUTH & CLOUD FIRESTORE BAR ---
+                    // --- SATU PINTU CLOUD SYNC BAR ---
+                    val isCloudConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null)
+                    val isSyncingActive = isFirestoreSyncing || (syncStatus == SyncStatus.SYNCING)
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -362,99 +369,127 @@ fun HomeScreen(
                         ),
                         border = BorderStroke(
                             1.dp,
-                            if (firebaseUser != null) PremiumGold.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                            if (isCloudConnected) PremiumGold.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                         )
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(16.dp.scaled),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .padding(horizontal = 14.dp.scaled, vertical = 12.dp.scaled),
+                            verticalArrangement = Arrangement.spacedBy(8.dp.scaled)
                         ) {
                             Row(
+                                modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(44.dp.scaled)
-                                        .background(
-                                            if (firebaseUser != null) PremiumGold.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
-                                            shape = RoundedCornerShape(12.dp)
-                                        ),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(
-                                        imageVector = if (firebaseUser != null) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                                        contentDescription = "Firebase Cloud Status",
-                                        tint = if (firebaseUser != null) PremiumGold else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(24.dp.scaled)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(14.dp.scaled))
-                                Column {
-                                    Text(
-                                        text = if (firebaseUser != null) (firebaseUser?.displayName ?: firebaseUser?.email ?: "Pengguna Cloud") else "Firebase & Cloud Firestore",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontSize = 14.sp.scaled
-                                    )
-                                    Text(
-                                        text = if (firebaseUser != null) {
-                                            if (isFirestoreSyncing) "Sedang sinkron ke Firestore..."
-                                            else if (firestoreLastSync != null && firestoreLastSync!! > 0) "Tersinkron ke Firestore"
-                                            else "Siap sinkronisasi"
-                                        } else "Ketuk untuk hubungkan akun & Firestore",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (firebaseUser != null) PremiumGold else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 12.sp.scaled
-                                    )
-                                }
-                            }
-
-                            if (firebaseUser != null) {
-                                IconButton(
-                                    onClick = {
-                                        viewModel.syncFirestore { success, msg ->
-                                            (context as? Activity)?.runOnUiThread {
-                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                            }
+                                    Box(
+                                        modifier = Modifier
+                                            .size(40.dp.scaled)
+                                            .background(
+                                                if (isCloudConnected) PremiumGold.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surface,
+                                                shape = RoundedCornerShape(12.dp)
+                                            ),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSyncingActive) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(20.dp.scaled),
+                                                strokeWidth = 2.dp,
+                                                color = PremiumGold
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = if (isCloudConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                                contentDescription = "Cloud Status",
+                                                tint = if (isCloudConnected) PremiumGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(22.dp.scaled)
+                                            )
                                         }
-                                    },
-                                    enabled = !isFirestoreSyncing
-                                ) {
-                                    if (isFirestoreSyncing) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(20.dp),
-                                            color = PremiumGold,
-                                            strokeWidth = 2.dp
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp.scaled))
+                                    Column(modifier = Modifier.weight(1f, fill = false)) {
+                                        Text(
+                                            text = if (isCloudConnected) (viewModel.syncHelper.userEmail ?: firebaseUser?.displayName ?: firebaseUser?.email ?: "Akun Cloud Aktif") else "Google Drive & Cloud Sync",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontSize = 13.sp.scaled,
+                                            maxLines = 1
                                         )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Default.Sync,
-                                            contentDescription = "Sync Firestore",
-                                            tint = PremiumGold
+                                        Text(
+                                            text = if (isCloudConnected) {
+                                                if (isSyncingActive) (firestoreMessage ?: "Sedang menyinkronkan stok...")
+                                                else "Tersinkronisasi & Aman"
+                                            } else "Ketuk untuk masuk & sinkronkan data",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = if (isCloudConnected) PremiumGold else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 11.sp.scaled,
+                                            maxLines = 2,
+                                            softWrap = true
                                         )
                                     }
                                 }
-                            } else {
-                                Button(
-                                    onClick = {
-                                        (context as? Activity)?.let { act ->
-                                            viewModel.signInWithGoogle(act) { success, msg ->
-                                                act.runOnUiThread {
-                                                    Toast.makeText(act, msg, Toast.LENGTH_SHORT).show()
+
+                                Spacer(modifier = Modifier.width(8.dp.scaled))
+
+                                if (isCloudConnected) {
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.forceSyncNow { status ->
+                                                (context as? Activity)?.runOnUiThread {
+                                                    Toast.makeText(context, status, Toast.LENGTH_SHORT).show()
                                                 }
                                             }
-                                        }
-                                    },
-                                    colors = ButtonDefaults.buttonColors(containerColor = PremiumGold),
-                                    shape = RoundedCornerShape(8.dp),
-                                    modifier = Modifier.height(36.dp.scaled)
+                                            viewModel.syncFirestore()
+                                        },
+                                        enabled = !isSyncingActive,
+                                        modifier = Modifier.size(36.dp.scaled)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Sync,
+                                            contentDescription = "Sinkron Cepat",
+                                            tint = PremiumGold,
+                                            modifier = Modifier.size(20.dp.scaled)
+                                        )
+                                    }
+                                } else {
+                                    Button(
+                                        onClick = { onNavigateToSettings() },
+                                        colors = ButtonDefaults.buttonColors(containerColor = PremiumGold),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.heightIn(min = 34.dp.scaled)
+                                    ) {
+                                        Text("Masuk", fontSize = 12.sp.scaled, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            if (isSyncingActive) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp.scaled)
                                 ) {
-                                    Text("Masuk", fontSize = 12.sp.scaled, fontWeight = FontWeight.Bold)
+                                    LinearProgressIndicator(
+                                        progress = { firestoreSyncProgress.coerceIn(0.05f, 1.0f) },
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(4.dp.scaled),
+                                        color = PremiumGold,
+                                        trackColor = PremiumGold.copy(alpha = 0.2f)
+                                    )
+                                    Text(
+                                        text = "${(firestoreSyncProgress * 100).toInt()}%",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = PremiumGold,
+                                        fontSize = 10.sp.scaled
+                                    )
                                 }
                             }
                         }
@@ -730,11 +765,11 @@ private fun SummaryCardPremium(
         shape = RoundedCornerShape(uiConfig.cornerRadius.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)),
-        modifier = modifier.height(if (isLarge) (uiConfig.buttonHeight * 2).dp else (uiConfig.buttonHeight * 1.5f).dp)
+        modifier = modifier.heightIn(min = if (isLarge) (uiConfig.buttonHeight * 1.8f).dp else (uiConfig.buttonHeight * 1.4f).dp)
     ) {
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxWidth()
                 .background(
                     Brush.radialGradient(
                         colors = listOf(bgColor.copy(alpha = 0.2f), Color.Transparent),
@@ -742,11 +777,11 @@ private fun SummaryCardPremium(
                         radius = 400f * uiConfig.paddingScale
                     )
                 )
-                .padding(16.dp.scaled)
+                .padding(14.dp.scaled)
         ) {
             Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp.scaled)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -757,12 +792,15 @@ private fun SummaryCardPremium(
                         text = label,
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = (if (isLarge) 14.sp else 12.sp).scaled
+                        fontSize = (if (isLarge) 13.sp else 11.sp).scaled,
+                        maxLines = 1,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    Spacer(Modifier.width(6.dp.scaled))
                     Icon(
                         icon, 
                         null, 
-                        modifier = Modifier.size((if (isLarge) 28.dp else 20.dp).scaled), 
+                        modifier = Modifier.size((if (isLarge) 24.dp else 18.dp).scaled), 
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -771,7 +809,9 @@ private fun SummaryCardPremium(
                     style = if (isLarge) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge, 
                     fontWeight = FontWeight.Black, 
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontSize = (if (isLarge) 24.sp else 18.sp).scaled
+                    fontSize = (if (isLarge) 22.sp else 16.sp).scaled,
+                    maxLines = 2,
+                    softWrap = true
                 )
             }
         }
@@ -796,33 +836,38 @@ private fun MenuCardPremium(
                             else MaterialTheme.colorScheme.surfaceVariant
         ),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = if (highlight) 0.6f else 0.2f)),
-        modifier = modifier.height((uiConfig.buttonHeight * 1.8f).dp)
+        modifier = modifier.heightIn(min = (uiConfig.buttonHeight * 1.6f).dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(14.dp.scaled),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp.scaled),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
                 icon, 
                 null, 
-                modifier = Modifier.size(32.dp.scaled), 
+                modifier = Modifier.size(28.dp.scaled), 
                 tint = MaterialTheme.colorScheme.primary
             )
-            Spacer(Modifier.height(8.dp.scaled))
+            Spacer(Modifier.height(6.dp.scaled))
             Text(
                 title, 
                 style = MaterialTheme.typography.labelLarge, 
                 fontWeight = FontWeight.ExtraBold,
-                fontSize = 14.sp.scaled,
-                textAlign = TextAlign.Center
+                fontSize = 13.sp.scaled,
+                textAlign = TextAlign.Center,
+                maxLines = 1
             )
             Text(
                 subtitle, 
                 style = MaterialTheme.typography.labelSmall, 
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 10.sp.scaled,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                softWrap = true
             )
         }
     }
@@ -841,27 +886,30 @@ private fun GridMenuItem(
         shape = RoundedCornerShape(uiConfig.cornerRadius.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-        modifier = modifier.height((uiConfig.buttonHeight * 1.4f).dp)
+        modifier = modifier.heightIn(min = (uiConfig.buttonHeight * 1.3f).dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(8.dp.scaled),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(6.dp.scaled),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Icon(
                 icon, 
                 null, 
-                modifier = Modifier.size(24.dp.scaled), 
+                modifier = Modifier.size(22.dp.scaled), 
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(Modifier.height(6.dp.scaled))
+            Spacer(Modifier.height(4.dp.scaled))
             Text(
                 title, 
                 style = MaterialTheme.typography.labelSmall, 
                 fontWeight = FontWeight.Bold,
                 fontSize = 10.sp.scaled,
                 textAlign = TextAlign.Center,
-                maxLines = 1
+                maxLines = 2,
+                softWrap = true
             )
         }
     }

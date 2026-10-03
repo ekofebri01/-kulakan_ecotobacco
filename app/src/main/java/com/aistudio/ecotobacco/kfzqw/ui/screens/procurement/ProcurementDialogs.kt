@@ -189,8 +189,15 @@ fun AddEditPlanDialog(
     }
 
     val calendar = Calendar.getInstance()
+    // Jika sedang mengedit rencana lama, otomatis perbarui tanggal ke waktu saat ini (saat diedit),
+    // kecuali jika pengguna sengaja memilih tanggal lain secara manual melalui date picker.
+    val isEditing = planToEdit != null
+    var isManualDateSelected by remember { mutableStateOf(false) }
     var selectedDate by remember {
-        mutableLongStateOf(planToEdit?.plan?.date ?: System.currentTimeMillis())
+        mutableLongStateOf(
+            if (isEditing) System.currentTimeMillis()
+            else (planToEdit?.plan?.date ?: System.currentTimeMillis())
+        )
     }
     var supplierName by remember { mutableStateOf(planToEdit?.plan?.supplierName ?: "") }
     var supplierExpanded by remember { mutableStateOf(false) }
@@ -344,7 +351,8 @@ fun AddEditPlanDialog(
                         Button(
                             onClick = {
                                 if (canSave) {
-                                    onConfirm(selectedDate, supplierName.trim(), itemsToBuy.toList())
+                                    val finalDate = if (isEditing && !isManualDateSelected) System.currentTimeMillis() else selectedDate
+                                    onConfirm(finalDate, supplierName.trim(), itemsToBuy.toList())
                                 } else {
                                     Toast.makeText(context, "Tambahkan minimal 1 barang ke rencana", Toast.LENGTH_SHORT).show()
                                 }
@@ -437,6 +445,7 @@ fun AddEditPlanDialog(
                                         { _, y, m, d ->
                                             calendar.set(y, m, d)
                                             selectedDate = calendar.timeInMillis
+                                            isManualDateSelected = true
                                         },
                                         calendar.get(Calendar.YEAR),
                                         calendar.get(Calendar.MONTH),
@@ -967,7 +976,8 @@ fun AddEditPlanDialog(
                 TextButton(
                     onClick = {
                         showExitConfirmation = false
-                        onConfirm(selectedDate, supplierName.trim(), itemsToBuy.toList())
+                        val finalDate = if (isEditing && !isManualDateSelected) System.currentTimeMillis() else selectedDate
+                        onConfirm(finalDate, supplierName.trim(), itemsToBuy.toList())
                     }
                 ) {
                     Text("Simpan", color = primaryColor, fontWeight = FontWeight.Bold)

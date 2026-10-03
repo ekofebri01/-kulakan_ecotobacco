@@ -54,9 +54,10 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                     FirebaseApp.initializeApp(ctx.applicationContext)
                 } else {
                     val options = FirebaseOptions.Builder()
-                        .setApplicationId("1:863851997609:android:com_aistudio_ecotobacco")
-                        .setApiKey("AIzaSyB_Fallback_EcoTobacco_Key")
-                        .setProjectId("ais-ecotobacco")
+                        .setApplicationId("1:680872469505:web:4f89cbd24222aaaf998c00")
+                        .setApiKey("AIzaSyBWw2rT7zrVogQvFs_7ExqV-Y2mN4AjNto")
+                        .setProjectId("project-0be2da66-9971-458e-bfe")
+                        .setStorageBucket("project-0be2da66-9971-458e-bfe.firebasestorage.app")
                         .build()
                     FirebaseApp.initializeApp(ctx.applicationContext, options)
                 }
@@ -70,6 +71,9 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val _syncProgress = MutableStateFlow(0f)
+    val syncProgress: StateFlow<Float> = _syncProgress.asStateFlow()
 
     private val _lastSyncedTime = MutableStateFlow<Long?>(
         prefs.getLong("last_firestore_sync_time", -1L).takeIf { it > 0 }
@@ -95,7 +99,8 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
         val fs = firestore ?: return@withContext Result.failure(IllegalStateException("Cloud Firestore tidak tersedia"))
 
         _isSyncing.value = true
-        _syncMessage.value = "Mengunggah data ke Cloud Firestore..."
+        _syncProgress.value = 0.05f
+        _syncMessage.value = "Menyiapkan data stok & transaksi..."
 
         try {
             val userDoc = fs.collection("users").document(userId)
@@ -113,53 +118,73 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
             )
             userDoc.collection("data").document("metadata")
                 .set(metadata, SetOptions.merge()).await()
+            _syncProgress.value = 0.15f
 
-            // 2. Batch write products
-            val productBatches = products.chunked(400)
-            for (batchList in productBatches) {
-                val batch = fs.batch()
-                for (p in batchList) {
-                    val pDoc = userDoc.collection("products").document(p.id.toString())
-                    val pData = hashMapOf(
-                        "id" to p.id,
-                        "name" to p.name,
-                        "price" to p.price,
-                        "unit" to p.unit,
-                        "sellingPrice" to p.sellingPrice,
-                        "sellingUnit" to p.sellingUnit,
-                        "contentQuantity" to p.contentQuantity,
-                        "updatedAt" to now
-                    )
-                    batch.set(pDoc, pData, SetOptions.merge())
+            // 2. Batch write products (Stock Data)
+            if (products.isNotEmpty()) {
+                val productBatches = products.chunked(200)
+                val totalProductBatches = productBatches.size
+                productBatches.forEachIndexed { index, batchList ->
+                    val uploadedCount = (index * 200) + batchList.size
+                    _syncMessage.value = "Mengunggah data stok ($uploadedCount/${products.size} barang)..."
+                    val batch = fs.batch()
+                    for (p in batchList) {
+                        val pDoc = userDoc.collection("products").document(p.id.toString())
+                        val pData = hashMapOf(
+                            "id" to p.id,
+                            "name" to p.name,
+                            "price" to p.price,
+                            "unit" to p.unit,
+                            "sellingPrice" to p.sellingPrice,
+                            "sellingUnit" to p.sellingUnit,
+                            "contentQuantity" to p.contentQuantity,
+                            "updatedAt" to now
+                        )
+                        batch.set(pDoc, pData, SetOptions.merge())
+                    }
+                    batch.commit().await()
+                    val batchProgress = 0.15f + ((index + 1).toFloat() / totalProductBatches) * 0.40f
+                    _syncProgress.value = batchProgress
                 }
-                batch.commit().await()
+            } else {
+                _syncProgress.value = 0.55f
             }
 
             // 3. Batch write transactions
-            val txBatches = transactions.chunked(400)
-            for (batchList in txBatches) {
-                val batch = fs.batch()
-                for (tx in batchList) {
-                    val txDoc = userDoc.collection("transactions").document(tx.id.toString())
-                    val txData = hashMapOf(
-                        "id" to tx.id,
-                        "date" to tx.date,
-                        "productName" to tx.productName,
-                        "quantity" to tx.quantity,
-                        "unitPrice" to tx.unitPrice,
-                        "total" to tx.total,
-                        "supplier" to (tx.supplier ?: ""),
-                        "unit" to (tx.unit ?: "kg"),
-                        "isDeleted" to tx.isDeleted,
-                        "updatedAt" to now
-                    )
-                    batch.set(txDoc, txData, SetOptions.merge())
+            if (transactions.isNotEmpty()) {
+                val txBatches = transactions.chunked(200)
+                val totalTxBatches = txBatches.size
+                txBatches.forEachIndexed { index, batchList ->
+                    val uploadedTx = (index * 200) + batchList.size
+                    _syncMessage.value = "Mengunggah riwayat nota ($uploadedTx/${transactions.size})..."
+                    val batch = fs.batch()
+                    for (tx in batchList) {
+                        val txDoc = userDoc.collection("transactions").document(tx.id.toString())
+                        val txData = hashMapOf(
+                            "id" to tx.id,
+                            "date" to tx.date,
+                            "productName" to tx.productName,
+                            "quantity" to tx.quantity,
+                            "unitPrice" to tx.unitPrice,
+                            "total" to tx.total,
+                            "supplier" to (tx.supplier ?: ""),
+                            "unit" to (tx.unit ?: "kg"),
+                            "isDeleted" to tx.isDeleted,
+                            "updatedAt" to now
+                        )
+                        batch.set(txDoc, txData, SetOptions.merge())
+                    }
+                    batch.commit().await()
+                    val batchProgress = 0.55f + ((index + 1).toFloat() / totalTxBatches) * 0.30f
+                    _syncProgress.value = batchProgress
                 }
-                batch.commit().await()
+            } else {
+                _syncProgress.value = 0.85f
             }
 
             // 4. Batch write procurement plans
             if (plans.isNotEmpty()) {
+                _syncMessage.value = "Mengunggah rencana kulakan..."
                 val planBatch = fs.batch()
                 for (planWithItems in plans) {
                     val planDoc = userDoc.collection("procurement_plans").document(planWithItems.plan.id.toString())
@@ -185,12 +210,14 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                 }
                 planBatch.commit().await()
             }
+            _syncProgress.value = 0.95f
 
             // 5. Save preferences
             prefs.edit().putLong("last_firestore_sync_time", now).apply()
             _lastSyncedTime.value = now
+            _syncProgress.value = 1.0f
+            _syncMessage.value = "Sinkronisasi selesai! ${products.size} stok & ${transactions.size} transaksi tersimpan di Firestore."
             _isSyncing.value = false
-            _syncMessage.value = "Sinkronisasi Cloud Firestore berhasil!"
 
             val result = FirestoreSyncResult(
                 uploadedProducts = products.size,
@@ -202,8 +229,15 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
         } catch (e: Exception) {
             Log.w("FirestoreSyncHelper", "Sync to Firestore notice: ${e.message}")
             _isSyncing.value = false
-            _syncMessage.value = "Gagal sinkron Firestore: ${e.localizedMessage}"
-            Result.failure(e)
+            _syncProgress.value = 0f
+            val errStr = e.message ?: ""
+            val userMsg = if (errStr.contains("PERMISSION_DENIED") || errStr.contains("administrator only") || errStr.contains("Missing or insufficient permissions")) {
+                "Cloud Firestore dibatasi aturan akses. Data Anda aman tersimpan secara lokal (Room Database) & Google Drive Backup."
+            } else {
+                "Gagal sinkron Firestore: ${e.localizedMessage}"
+            }
+            _syncMessage.value = userMsg
+            Result.failure(Exception(userMsg))
         }
     }
 
@@ -327,8 +361,14 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
         } catch (e: Exception) {
             Log.w("FirestoreSyncHelper", "Restore from Firestore notice: ${e.message}")
             _isSyncing.value = false
-            _syncMessage.value = "Gagal memulihkan Firestore: ${e.localizedMessage}"
-            Result.failure(e)
+            val errStr = e.message ?: ""
+            val userMsg = if (errStr.contains("PERMISSION_DENIED") || errStr.contains("administrator only") || errStr.contains("Missing or insufficient permissions")) {
+                "Cloud Firestore dibatasi aturan akses. Data Anda aman tersimpan secara lokal (Room Database) & Google Drive Backup."
+            } else {
+                "Gagal memulihkan Firestore: ${e.localizedMessage}"
+            }
+            _syncMessage.value = userMsg
+            Result.failure(Exception(userMsg))
         }
     }
 

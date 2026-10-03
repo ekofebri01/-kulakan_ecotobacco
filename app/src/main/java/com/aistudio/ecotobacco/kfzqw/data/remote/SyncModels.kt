@@ -8,7 +8,20 @@ data class SyncDataBundle(
     val products: List<ProductSyncModel>,
     val lastUpdated: Long,
     val deletedTransactions: List<String>? = null,
-    val procurementPlans: List<ProcurementPlanSyncModel>? = null
+    val procurementPlans: List<ProcurementPlanSyncModel>? = null,
+    val appSettings: AppSettingsSyncModel? = null
+)
+
+@JsonClass(generateAdapter = true)
+data class AppSettingsSyncModel(
+    val themeMode: String = "SYSTEM",
+    val customColor: Int = 0xFF10B981.toInt(),
+    val customUnits: List<String> = listOf("kg", "ons", "pcs"),
+    val fontSizeScale: Float = 1.0f,
+    val paddingScale: Float = 1.0f,
+    val buttonHeight: Int = 56,
+    val cornerRadius: Int = 16,
+    val customTextColor: Int = 0
 )
 
 @JsonClass(generateAdapter = true)

@@ -2,6 +2,7 @@ package com.aistudio.ecotobacco.kfzqw.ui.screens.settings
 
 import android.app.Activity
 import android.app.AppOpsManager
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -43,6 +44,7 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Palette
@@ -50,14 +52,22 @@ import androidx.compose.material.icons.filled.QueryStats
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SettingsSuggest
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.SpaceDashboard
+import androidx.compose.material.icons.filled.Height
+import androidx.compose.material.icons.filled.RoundedCorner
+import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -114,6 +124,7 @@ fun SettingsScreen(
     val firebaseUser by viewModel.firebaseUser.collectAsState()
     val isFirebaseLoading by viewModel.isFirebaseLoading.collectAsState()
     val isFirestoreSyncing by viewModel.isFirestoreSyncing.collectAsState()
+    val firestoreSyncProgress by viewModel.firestoreSyncProgress.collectAsState()
     val firestoreLastSync by viewModel.firestoreLastSync.collectAsState()
     val firestoreMessage by viewModel.firestoreMessage.collectAsState()
 
@@ -125,6 +136,9 @@ fun SettingsScreen(
     var showColorPicker by remember { mutableStateOf(false) }
     var showTextColorPicker by remember { mutableStateOf(false) }
     var showRestorePicker by remember { mutableStateOf(false) }
+    var showEmailLoginDialog by remember { mutableStateOf(false) }
+    var emailInput by remember { mutableStateOf("") }
+    var passwordInput by remember { mutableStateOf("") }
 
     val createBackupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -146,7 +160,10 @@ fun SettingsScreen(
             viewModel.handleOAuthRedirect(data) { success, message ->
                 (context as? Activity)?.runOnUiThread {
                     Toast.makeText(context, message ?: "Login Selesai", Toast.LENGTH_SHORT).show()
-                    if (success) viewModel.syncData()
+                    if (success) {
+                        viewModel.syncData()
+                        viewModel.syncFirestore()
+                    }
                 }
             }
         }
@@ -183,75 +200,154 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
 
-            // --- SECTION 1: CLOUD SYNC (Simplified & Intelligent) ---
-            PremiumSettingSection(title = "Cloud Synchronization") {
+            // --- SECTION 1: SATU PINTU CLOUD & GOOGLE DRIVE BACKUP ---
+            PremiumSettingSection(title = "Cloud & Google Drive Synchronization") {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
+                        val isConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null)
+                        val accountTitle = if (isConnected) {
+                            viewModel.syncHelper.userEmail ?: firebaseUser?.displayName ?: firebaseUser?.email ?: "Akun Terhubung"
+                        } else "Belum Terhubung ke Cloud"
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
                                 shape = RoundedCornerShape(14.dp),
-                                color = if (syncStatus != SyncStatus.DISCONNECTED) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f),
+                                color = if (isConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
                                 modifier = Modifier.size(48.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = if (syncStatus != SyncStatus.DISCONNECTED) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                        imageVector = if (isConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
                                         contentDescription = null,
-                                        tint = if (syncStatus != SyncStatus.DISCONNECTED) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(24.dp)
+                                        tint = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(26.dp)
                                     )
                                 }
                             }
                             Spacer(Modifier.width(16.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (syncStatus != SyncStatus.DISCONNECTED) "Google Drive Connected" else "Google Drive Disconnected",
+                                    text = if (isConnected) "Akun Cloud Aktif" else "Cadangkan Data ke Cloud",
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = if (syncStatus != SyncStatus.DISCONNECTED) viewModel.syncHelper.userEmail ?: "Active Account" else "Backup your data to the cloud",
+                                    text = accountTitle,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
                                 )
                             }
                         }
 
-                        Spacer(Modifier.height(20.dp))
+                        Spacer(Modifier.height(18.dp))
 
-                        if (syncStatus == SyncStatus.DISCONNECTED) {
+                        if (!isConnected) {
+                            // Primary: Masuk dengan Email / Akun Cloud
                             Button(
-                                onClick = { googleLoginLauncher.launch(viewModel.getAuthIntent()) },
+                                onClick = {
+                                    showEmailLoginDialog = true
+                                },
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
                             ) {
-                                Text("Connect to Google Drive", fontWeight = FontWeight.Bold)
+                                Icon(Icons.Default.CloudSync, null, modifier = Modifier.size(20.dp))
+                                Spacer(Modifier.width(8.dp))
+                                Text("Masuk dengan Email / Akun Cloud", fontWeight = FontWeight.Bold)
+                            }
+
+                            Spacer(Modifier.height(10.dp))
+
+                            // Secondary: Masuk Cepat Cloud / Mode Tamu (Sangat cepat tanpa browser / untuk testing langsung)
+                            OutlinedButton(
+                                onClick = {
+                                    Toast.makeText(context, "Menghubungkan ke Cloud Firestore...", Toast.LENGTH_SHORT).show()
+                                    viewModel.signInAnonymously { success, msg ->
+                                        Toast.makeText(context, msg ?: if (success) "Terhubung ke Cloud!" else "Gagal", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            ) {
+                                Icon(Icons.Default.FlashOn, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                                Spacer(Modifier.width(8.dp))
+                                Text("Masuk Cepat Cloud (Mode Tamu / Instan)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                             }
                         } else {
-                            // Account Controls
+                            // SINKRONISASI 1 PINTU
+                            val isSyncingActive = isFirestoreSyncing || (syncStatus == SyncStatus.SYNCING)
+
+                            if (isSyncingActive) {
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                CircularProgressIndicator(
+                                                    modifier = Modifier.size(16.dp),
+                                                    strokeWidth = 2.dp,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                                Text(
+                                                    text = firestoreMessage ?: "Sedang menyinkronkan data stok...",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                            Text(
+                                                text = "${(firestoreSyncProgress * 100).toInt()}%",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        LinearProgressIndicator(
+                                            progress = { firestoreSyncProgress.coerceIn(0.05f, 1.0f) },
+                                            modifier = Modifier.fillMaxWidth().height(6.dp),
+                                            color = MaterialTheme.colorScheme.primary,
+                                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                        )
+                                    }
+                                }
+                            }
+
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
                                 OutlinedButtonPremium(
-                                    text = "Sync Now",
+                                    text = if (isSyncingActive) "Menyimpan..." else "Sinkron Sekarang",
                                     icon = Icons.Default.Sync,
                                     modifier = Modifier.weight(1f),
                                     onClick = { 
                                         viewModel.forceSyncNow { status ->
                                             (context as? Activity)?.runOnUiThread { Toast.makeText(context, status, Toast.LENGTH_SHORT).show() }
                                         }
+                                        viewModel.syncFirestore()
                                     }
                                 )
                                 OutlinedButtonPremium(
-                                    text = "Restore",
+                                    text = "Pulihkan Cloud",
                                     icon = Icons.Default.Download,
                                     modifier = Modifier.weight(1f),
                                     onClick = {
@@ -260,18 +356,21 @@ fun SettingsScreen(
                                 )
                             }
                             
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(14.dp))
                             
                             // Auto Sync Toggle Row
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
+                                    .padding(horizontal = 16.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text("Auto Sync Data", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Sinkronisasi Otomatis", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                    Text("Simpan data & pengaturan setiap ada perubahan", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
                                 Switch(
                                     checked = isAutoSync, 
                                     onCheckedChange = { isAutoSync = it; viewModel.syncHelper.isAutoSyncEnabled = it },
@@ -283,152 +382,7 @@ fun SettingsScreen(
                                 onClick = { showDisconnectDialog = true },
                                 modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
                             ) {
-                                Text("Disconnect Account", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // --- SECTION 2B: FIREBASE AUTH & CLOUD FIRESTORE ---
-            PremiumSettingSection(title = "Firebase & Cloud Firestore") {
-                PremiumCardGroup {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .background(
-                                        if (firebaseUser != null) MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
-                                        else MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = RoundedCornerShape(12.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (firebaseUser != null) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                                    contentDescription = "Firebase Status",
-                                    tint = if (firebaseUser != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Spacer(Modifier.width(14.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (firebaseUser != null) "Firebase Auth Terhubung" else "Firebase Auth Belum Terhubung",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = if (firebaseUser != null) {
-                                        val email = firebaseUser?.email ?: "Tamu (${firebaseUser?.uid?.take(8)}...)"
-                                        email
-                                    } else "Masuk dengan Google untuk identifikasi aman & persistensi Firestore",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                if (firestoreLastSync != null && firestoreLastSync!! > 0) {
-                                    val sdf = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
-                                    Text(
-                                        text = "Terakhir sinkron Firestore: ${sdf.format(Date(firestoreLastSync!!))}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(top = 2.dp)
-                                    )
-                                }
-                            }
-                        }
-
-                        if (firebaseUser == null) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = {
-                                        (context as? Activity)?.let { act ->
-                                            viewModel.signInWithGoogle(act) { success, msg ->
-                                                act.runOnUiThread {
-                                                    Toast.makeText(act, msg, Toast.LENGTH_SHORT).show()
-                                                }
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    enabled = !isFirebaseLoading
-                                ) {
-                                    if (isFirebaseLoading) {
-                                        CircularProgressIndicator(modifier = Modifier.size(20.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                                    } else {
-                                        Text("Masuk dengan Google (Firebase Auth)", fontWeight = FontWeight.Bold)
-                                    }
-                                }
-
-                                OutlinedButtonPremium(
-                                    text = "Masuk Cepat Sebagai Tamu (Firebase)",
-                                    icon = Icons.Default.Person,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    onClick = {
-                                        viewModel.signInAnonymously { success, msg ->
-                                            (context as? Activity)?.runOnUiThread {
-                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-                        } else {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Button(
-                                    onClick = {
-                                        viewModel.syncFirestore { success, msg ->
-                                            (context as? Activity)?.runOnUiThread {
-                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                                    enabled = !isFirestoreSyncing
-                                ) {
-                                    if (isFirestoreSyncing) {
-                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Menyimpan...")
-                                    } else {
-                                        Icon(Icons.Default.CloudSync, null, modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(8.dp))
-                                        Text("Simpan Firestore")
-                                    }
-                                }
-
-                                OutlinedButtonPremium(
-                                    text = "Pulihkan",
-                                    icon = Icons.Default.Download,
-                                    modifier = Modifier.weight(1f),
-                                    onClick = {
-                                        viewModel.restoreFromFirestore { success, msg ->
-                                            (context as? Activity)?.runOnUiThread {
-                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-                                            }
-                                        }
-                                    }
-                                )
-                            }
-
-                            TextButton(
-                                onClick = { viewModel.signOutFirebase() },
-                                modifier = Modifier.align(Alignment.CenterHorizontally)
-                            ) {
-                                Text("Keluar dari Akun Firebase", color = MaterialTheme.colorScheme.error)
+                                Text("Putuskan Hubungan Akun", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
                             }
                         }
                     }
@@ -440,23 +394,33 @@ fun SettingsScreen(
             val paddingScale by viewModel.paddingScale.collectAsState()
             val buttonHeight by viewModel.buttonHeight.collectAsState()
             val cornerRadius by viewModel.cornerRadius.collectAsState()
+            val customTextColor by viewModel.customTextColor.collectAsState()
 
-            PremiumSettingSection(title = "UI Personalization") {
+            PremiumSettingSection(title = "Personalisasi Antarmuka (UI)") {
                 PremiumCardGroup {
-                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp.scaled),
+                        verticalArrangement = Arrangement.spacedBy(14.dp.scaled)
+                    ) {
                         // Font Size Slider
+                        val fontPercent = (fontSizeScale * 100).toInt()
                         UiSliderItem(
                             label = "Ukuran Font",
                             value = fontSizeScale,
+                            displayValue = "$fontPercent%",
+                            icon = Icons.Default.TextFields,
                             valueRange = 0.8f..1.5f,
                             onValueChange = { viewModel.setFontSizeScale(it) }
                         )
                         
                         // Padding Scale Slider
+                        val padPercent = (paddingScale * 100).toInt()
                         UiSliderItem(
-                            label = "Jarak/Padding",
+                            label = "Jarak / Padding",
                             value = paddingScale,
-                            valueRange = 0.5f..2.0f,
+                            displayValue = "$padPercent%",
+                            icon = Icons.Default.SpaceDashboard,
+                            valueRange = 0.5f..1.8f,
                             onValueChange = { viewModel.setPaddingScale(it) }
                         )
 
@@ -464,6 +428,8 @@ fun SettingsScreen(
                         UiSliderItem(
                             label = "Tinggi Tombol",
                             value = buttonHeight.toFloat(),
+                            displayValue = "${buttonHeight}dp",
+                            icon = Icons.Default.Height,
                             valueRange = 40f..80f,
                             onValueChange = { viewModel.setButtonHeight(it.toInt()) }
                         )
@@ -472,18 +438,36 @@ fun SettingsScreen(
                         UiSliderItem(
                             label = "Kebulatan Sudut",
                             value = cornerRadius.toFloat(),
+                            displayValue = "${cornerRadius}dp",
+                            icon = Icons.Default.RoundedCorner,
                             valueRange = 0f..32f,
                             onValueChange = { viewModel.setCornerRadius(it.toInt()) }
                         )
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                        PremiumSettingItem(
-                            title = "Warna Teks",
-                            subtitle = "Kustomisasi warna tulisan",
-                            icon = Icons.Default.Palette,
-                            onClick = { showTextColorPicker = true }
-                        )
+                        // Warna Teks & Reset Button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp.scaled)
+                        ) {
+                            OutlinedButtonPremium(
+                                text = "Warna Teks",
+                                icon = Icons.Default.Palette,
+                                modifier = Modifier.weight(1f),
+                                onClick = { showTextColorPicker = true }
+                            )
+
+                            OutlinedButtonPremium(
+                                text = "Reset Default",
+                                icon = Icons.Default.RestartAlt,
+                                modifier = Modifier.weight(1f),
+                                onClick = { 
+                                    viewModel.resetUiCustomization()
+                                    Toast.makeText(context, "Tampilan UI dikembalikan ke bawaan", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -678,6 +662,57 @@ fun SettingsScreen(
         )
     }
 
+    if (showEmailLoginDialog) {
+        AlertDialog(
+            onDismissRequest = { showEmailLoginDialog = false },
+            title = { Text("Masuk dengan Email / Akun Cloud", fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("Masukkan email dan kata sandi Anda untuk menghubungkan cloud storage & sinkronisasi data:", style = MaterialTheme.typography.bodyMedium)
+                    OutlinedTextField(
+                        value = emailInput,
+                        onValueChange = { emailInput = it },
+                        label = { Text("Email") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = passwordInput,
+                        onValueChange = { passwordInput = it },
+                        label = { Text("Kata Sandi (Min. 6 Karakter)") },
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (emailInput.isNotBlank() && passwordInput.length >= 6) {
+                            showEmailLoginDialog = false
+                            Toast.makeText(context, "Memproses login...", Toast.LENGTH_SHORT).show()
+                            viewModel.signInWithEmail(emailInput, passwordInput) { success, msg ->
+                                Toast.makeText(context, msg ?: if (success) "Login Berhasil" else "Login Gagal", Toast.LENGTH_SHORT).show()
+                            }
+                        } else {
+                            Toast.makeText(context, "Masukkan email yang valid & sandi minimal 6 karakter", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Masuk / Daftar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showEmailLoginDialog = false }) {
+                    Text("Batal")
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
+
     if (showRestorePicker) {
         DriveBackupPicker(
             viewModel = viewModel,
@@ -827,27 +862,85 @@ fun PremiumBackupItem(
 fun UiSliderItem(
     label: String,
     value: Float,
+    displayValue: String,
+    icon: ImageVector,
     valueRange: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit
+    onValueChange: (Float) -> Unit,
+    steps: Int = 0
 ) {
-    Column {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    val uiConfig = LocalUiConfig.current
+    Surface(
+        shape = RoundedCornerShape((uiConfig.cornerRadius / 1.5f).toInt().coerceAtLeast(10).dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp.scaled, vertical = 12.dp.scaled),
+            verticalArrangement = Arrangement.spacedBy(6.dp.scaled)
         ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-            Text(String.format("%.2f", value), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary)
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = valueRange,
-            colors = SliderDefaults.colors(
-                thumbColor = MaterialTheme.colorScheme.primary,
-                activeTrackColor = MaterialTheme.colorScheme.primary
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp.scaled)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                        modifier = Modifier.size(32.dp.scaled)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp.scaled)
+                            )
+                        }
+                    }
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp.scaled,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+                
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = displayValue,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 12.sp.scaled,
+                        modifier = Modifier.padding(horizontal = 8.dp.scaled, vertical = 4.dp.scaled)
+                    )
+                }
+            }
+            
+            Slider(
+                value = value,
+                onValueChange = onValueChange,
+                valueRange = valueRange,
+                steps = steps,
+                colors = SliderDefaults.colors(
+                    thumbColor = MaterialTheme.colorScheme.primary,
+                    activeTrackColor = MaterialTheme.colorScheme.primary,
+                    inactiveTrackColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.15f)
+                ),
+                modifier = Modifier.fillMaxWidth()
             )
-        )
+        }
     }
 }
 
@@ -943,7 +1036,9 @@ fun OutlinedButtonPremium(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
         Row(
-            modifier = Modifier.height(uiConfig.buttonHeight.dp),
+            modifier = Modifier
+                .heightIn(min = uiConfig.buttonHeight.dp)
+                .padding(horizontal = 12.dp.scaled, vertical = 6.dp.scaled),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -954,7 +1049,8 @@ fun OutlinedButtonPremium(
                 style = MaterialTheme.typography.labelLarge, 
                 fontWeight = FontWeight.Bold, 
                 color = MaterialTheme.colorScheme.primary,
-                fontSize = 14.sp.scaled
+                fontSize = 14.sp.scaled,
+                maxLines = 1
             )
         }
     }

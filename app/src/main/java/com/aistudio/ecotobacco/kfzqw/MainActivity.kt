@@ -207,6 +207,19 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        intent.data?.let { uri ->
+            if (uri.scheme?.startsWith("com.googleusercontent.apps") == true || uri.host == "ecotobacco-kfzqw.com") {
+                viewModel.handleOAuthRedirect(intent) { success, msg ->
+                    runOnUiThread {
+                        android.widget.Toast.makeText(this, msg ?: if (success) "Login Google Berhasil" else "Login gagal", android.widget.Toast.LENGTH_SHORT).show()
+                        if (success) {
+                            viewModel.syncData()
+                            viewModel.syncFirestore()
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -228,11 +241,11 @@ fun WhatsNewDialog(currentVersion: String, onDismiss: () -> Unit) {
                 }
                 item { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) }
                 item { Text("Fitur & Pembaruan Terbaru:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) }
-                item { WhatsNewItem("🎨", "UI Personalization", "Atur ukuran font, padding, dan bentuk tombol sesukamu.") }
-                item { WhatsNewItem("📊", "Modern Dashboard v4.0", "Tampilan dashboard baru yang lebih premium dan informatif.") }
-                item { WhatsNewItem("🛡️", "Konfirmasi Keluar", "Mencegah aplikasi tertutup secara tidak sengaja.") }
-                item { WhatsNewItem("🚀", "Peningkatan AI Scan", "Optimasi akurasi pemindaian nota dengan struktur kompleks.") }
-                item { WhatsNewItem("☁️", "Sinkronisasi Google Drive", "Cadangkan dan pulihkan data Anda kapan saja.") }
+                item { WhatsNewItem("🔐", "Autentikasi Google Cloud", "Login Google resmi dengan penanganan fallback browser & Credential Manager.") }
+                item { WhatsNewItem("⚡", "Masuk Cepat Cloud", "Hubungkan data ke Cloud Firestore instan dalam 1 klik (Mode Tamu / Instan).") }
+                item { WhatsNewItem("📊", "Indikator Progress Real-time", "Pelacakan kemajuan bertahap (0%-100%) saat sinkronisasi stok & transaksi.") }
+                item { WhatsNewItem("🎨", "Personalisasi UI v4.1", "Kartu kontrol modern dengan value badge dan tombol reset bawaan.") }
+                item { WhatsNewItem("☁️", "Sinkronisasi Google Drive", "Cadangkan dan pulihkan data Anda kapan saja dengan aman.") }
             }
         },
         confirmButton = {
