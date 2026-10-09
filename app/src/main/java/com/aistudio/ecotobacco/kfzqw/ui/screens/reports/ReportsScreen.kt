@@ -35,16 +35,19 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FilterAlt
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.OutlinedCard
@@ -99,6 +102,8 @@ fun ReportsScreen(
     var showBulkSupplierDialog by remember { mutableStateOf(false) }
     var bulkSupplier by remember { mutableStateOf("") }
     var bulkUnit by remember { mutableStateOf("") }
+    var transactionToDelete by remember { mutableStateOf<TransactionEntity?>(null) }
+    var showBulkDeleteConfirm by remember { mutableStateOf(false) }
 
     val filteredTransactions = remember(transactions, filterBy, baseDate, selectedSupplier) {
         val calendar = Calendar.getInstance().apply { timeInMillis = baseDate }
@@ -206,9 +211,7 @@ fun ReportsScreen(
                             Icon(Icons.Default.Edit, contentDescription = "Edit transaksi", tint = MaterialTheme.colorScheme.primary)
                         }
                         IconButton(onClick = {
-                            viewModel.deleteTransactions(selectedIds.toList())
-                            isSelectionMode = false
-                            selectedIds = emptySet()
+                            showBulkDeleteConfirm = true
                         }) {
                             Icon(Icons.Default.Delete, contentDescription = "Hapus", tint = MaterialTheme.colorScheme.error)
                         }
@@ -425,7 +428,74 @@ fun ReportsScreen(
             transaction = transactionOptionsTarget!!,
             onDismiss = { transactionOptionsTarget = null },
             onEdit = { transactionToEdit = transactionOptionsTarget; transactionOptionsTarget = null },
-            onDelete = { viewModel.deleteTransaction(transactionOptionsTarget!!.id); transactionOptionsTarget = null }
+            onDelete = {
+                transactionToDelete = transactionOptionsTarget
+                transactionOptionsTarget = null
+            }
+        )
+    }
+
+    // Confirmation Dialog for Single Transaction Delete
+    transactionToDelete?.let { tx ->
+        AlertDialog(
+            onDismissRequest = { transactionToDelete = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Konfirmasi Hapus Transaksi", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Apakah Anda yakin ingin menghapus transaksi \"${tx.productName}\" " +
+                    "(${tx.quantity} ${tx.unit} - ${currencyFormatter.format(tx.total).replace("Rp", "Rp ")})? Data transaksi ini akan dihapus dari laporan."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteTransaction(tx.id)
+                        transactionToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hapus", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { transactionToDelete = null }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
+
+    // Confirmation Dialog for Bulk Transaction Delete
+    if (showBulkDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showBulkDeleteConfirm = false },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Konfirmasi Hapus Massal", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Apakah Anda yakin ingin menghapus ${selectedIds.size} transaksi terpilih sekaligus? " +
+                    "Tindakan ini tidak dapat dibatalkan."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteTransactions(selectedIds.toList())
+                        isSelectionMode = false
+                        selectedIds = emptySet()
+                        showBulkDeleteConfirm = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hapus Semua (${selectedIds.size})", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showBulkDeleteConfirm = false }) {
+                    Text("Batal")
+                }
+            }
         )
     }
 

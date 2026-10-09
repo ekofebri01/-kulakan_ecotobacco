@@ -16,8 +16,8 @@ android {
     applicationId = "com.aistudio.ecotobacco.kfzqw"
     minSdk = 24
     targetSdk = 36
-    versionCode = 13
-    versionName = "4.1"
+    versionCode = 14
+    versionName = "4.2"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     manifestPlaceholders["appAuthRedirectScheme"] = "com.googleusercontent.apps.680872469505-hic8du49lidqjsku9p7enbjv2ggtcpnr"

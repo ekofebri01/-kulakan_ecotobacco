@@ -214,43 +214,46 @@ fun HomeScreen(
         label = "matrixProgress"
     )
 
+    val matrixPaint = remember {
+        android.graphics.Paint().apply {
+            isAntiAlias = false
+            typeface = android.graphics.Typeface.MONOSPACE
+        }
+    }
+    val matrixChars = remember { arrayOf("0", "1", "0", "1", "1", "0", "0", "1") }
+
     Scaffold(
         containerColor = PremiumNavy,
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
             // --- BACKGROUND MATRIX EFFECT ---
             Canvas(modifier = Modifier.fillMaxSize()) {
-                val columns = (size.width / 22.dp.toPx()).toInt()
-                val chars = "0101011001"
-                
+                val colStep = 32.dp.toPx()
+                val rowStep = 44.dp.toPx()
+                val columns = (size.width / colStep).toInt()
+                val rows = (size.height / rowStep).toInt() + 2
+                matrixPaint.textSize = 10.sp.toPx()
+
+                val goldR = (PremiumGold.red * 255).toInt()
+                val goldG = (PremiumGold.green * 255).toInt()
+                val goldB = (PremiumGold.blue * 255).toInt()
+
                 for (i in 0 until columns) {
-                    val x = i * 22.dp.toPx()
+                    val x = i * colStep
                     val speedFactor = (i % 5 + 1) * 0.4f
                     val yOffset = (matrixProgress * size.height * speedFactor) % size.height
-                    
-                    val rows = (size.height / 35.dp.toPx()).toInt() + 2
+
                     for (j in 0 until rows) {
-                        val y = (yOffset + j * 35.dp.toPx()) % size.height
-                        val char = chars[(i + j) % chars.length]
-                        
-                        // Kecerahan ditingkatkan agar lebih terlihat (0.1f - 0.4f)
-                        val alpha = (0.4f * (y / size.height)).coerceIn(0.1f, 0.4f)
-                        
+                        val y = (yOffset + j * rowStep) % size.height
+                        val charStr = matrixChars[(i + j) % matrixChars.size]
+                        val alpha = (0.28f * (y / size.height)).coerceIn(0.06f, 0.28f)
+
+                        matrixPaint.setARGB((alpha * 255).toInt(), goldR, goldG, goldB)
                         drawContext.canvas.nativeCanvas.drawText(
-                            char.toString(),
+                            charStr,
                             x,
                             y,
-                            android.graphics.Paint().apply {
-                                color = android.graphics.Color.argb(
-                                    (alpha * 255).toInt(),
-                                    (PremiumGold.red * 255).toInt(),
-                                    (PremiumGold.green * 255).toInt(),
-                                    (PremiumGold.blue * 255).toInt()
-                                )
-                                textSize = 11.sp.toPx()
-                                isAntiAlias = true
-                                typeface = android.graphics.Typeface.MONOSPACE
-                            }
+                            matrixPaint
                         )
                     }
                 }
@@ -356,8 +359,83 @@ fun HomeScreen(
                         .padding(horizontal = 16.dp.scaled, vertical = 8.dp.scaled),
                     verticalArrangement = Arrangement.spacedBy(24.dp.scaled)
                 ) {
+                    // --- VISUAL CONNECTIVITY & SYNC STATUS BAR ---
+                    val isFirestoreSyncing by viewModel.isFirestoreSyncing.collectAsStateWithLifecycle()
+                    val syncProgress by viewModel.firestoreSyncProgress.collectAsStateWithLifecycle()
+                    val firestoreMessage by viewModel.firestoreMessage.collectAsStateWithLifecycle()
+                    val isOnline = viewModel.syncHelper.isOnline
+
+                    if (!isOnline || isFirestoreSyncing) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = if (!isOnline) MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+                            ),
+                            border = BorderStroke(1.dp, if (!isOnline) MaterialTheme.colorScheme.error.copy(alpha = 0.5f) else PremiumGold.copy(alpha = 0.5f))
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Icon(
+                                            imageVector = if (!isOnline) Icons.Default.CloudOff else Icons.Default.CloudSync,
+                                            contentDescription = "Status",
+                                            tint = if (!isOnline) MaterialTheme.colorScheme.error else PremiumGold,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Text(
+                                            text = if (!isOnline) "Mode Offline (Tanpa Internet)" else "Sinkronisasi Cloud Berlangsung (${(syncProgress * 100).toInt()}%)",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (!isOnline) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    if (isFirestoreSyncing) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp,
+                                            color = PremiumGold
+                                        )
+                                    }
+                                }
+
+                                if (isFirestoreSyncing) {
+                                    LinearProgressIndicator(
+                                        progress = { syncProgress.coerceIn(0f, 1f) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        color = PremiumGold,
+                                        trackColor = MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    Text(
+                                        text = firestoreMessage ?: "Menyiapkan data stok & transaksi...",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                    )
+                                } else if (!isOnline) {
+                                    Text(
+                                        text = "Data Anda tetap aman tersimpan secara lokal (Room Database).",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     // --- SATU PINTU CLOUD SYNC BAR ---
-                    val isCloudConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null)
+                    val isCloudConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null) || viewModel.syncHelper.isLocalUserConnected
                     val isSyncingActive = isFirestoreSyncing || (syncStatus == SyncStatus.SYNCING)
                     Card(
                         modifier = Modifier

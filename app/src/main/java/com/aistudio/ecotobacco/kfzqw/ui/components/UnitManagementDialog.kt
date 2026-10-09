@@ -17,6 +17,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -24,6 +26,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +54,7 @@ fun UnitManagementDialog(
     var newUnitName by remember { mutableStateOf("") }
     var editingUnit by remember { mutableStateOf<String?>(null) }
     var editedName by remember { mutableStateOf("") }
+    var unitToDelete by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -135,7 +139,7 @@ fun UnitManagementDialog(
                                         }) {
                                             Icon(Icons.Default.Edit, "Edit", tint = MaterialTheme.colorScheme.primary)
                                         }
-                                        IconButton(onClick = { onDelete(unit) }) {
+                                        IconButton(onClick = { unitToDelete = unit }) {
                                             Icon(Icons.Default.Delete, "Hapus", tint = MaterialTheme.colorScheme.error)
                                         }
                                     }
@@ -148,4 +152,29 @@ fun UnitManagementDialog(
         },
         shape = RoundedCornerShape(24.dp)
     )
+
+    unitToDelete?.let { u ->
+        AlertDialog(
+            onDismissRequest = { unitToDelete = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Hapus Satuan?", fontWeight = FontWeight.Bold) },
+            text = { Text("Apakah Anda yakin ingin menghapus satuan \"$u\"?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        onDelete(u)
+                        unitToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hapus", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { unitToDelete = null }) {
+                    Text("Batal")
+                }
+            }
+        )
+    }
 }

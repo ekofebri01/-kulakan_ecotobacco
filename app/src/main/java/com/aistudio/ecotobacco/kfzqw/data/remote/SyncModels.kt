@@ -9,7 +9,18 @@ data class SyncDataBundle(
     val lastUpdated: Long,
     val deletedTransactions: List<String>? = null,
     val procurementPlans: List<ProcurementPlanSyncModel>? = null,
-    val appSettings: AppSettingsSyncModel? = null
+    val appSettings: AppSettingsSyncModel? = null,
+    val categories: List<String>? = null
+)
+
+data class AutoBackupInfo(
+    val lastBackupTime: Long = 0L,
+    val fileSizeFormatted: String = "0 B",
+    val productCount: Int = 0,
+    val transactionCount: Int = 0,
+    val planCount: Int = 0,
+    val filePath: String = "",
+    val isAutoBackupActive: Boolean = true
 )
 
 @JsonClass(generateAdapter = true)

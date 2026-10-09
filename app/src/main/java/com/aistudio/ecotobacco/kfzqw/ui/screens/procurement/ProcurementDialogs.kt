@@ -207,6 +207,7 @@ fun AddEditPlanDialog(
     }
     var showAddItem by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<ProcurementItemEntity?>(null) }
+    var itemToDeleteFromDraft by remember { mutableStateOf<ProcurementItemEntity?>(null) }
     var showExitConfirmation by remember { mutableStateOf(false) }
 
     BackHandler(enabled = !showExitConfirmation) {
@@ -909,7 +910,7 @@ fun AddEditPlanDialog(
 
                                             // Delete Button
                                             IconButton(
-                                                onClick = { itemsToBuy.remove(item) },
+                                                onClick = { itemToDeleteFromDraft = item },
                                                 modifier = Modifier.size(32.dp)
                                             ) {
                                                 Icon(
@@ -928,6 +929,31 @@ fun AddEditPlanDialog(
                 }
             }
         }
+    }
+
+    itemToDeleteFromDraft?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToDeleteFromDraft = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Hapus Barang dari Draf?", fontWeight = FontWeight.Bold) },
+            text = { Text("Apakah Anda yakin ingin menghapus \"${item.productName}\" dari draf rencana ini?") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        itemsToBuy.remove(item)
+                        itemToDeleteFromDraft = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hapus", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { itemToDeleteFromDraft = null }) {
+                    Text("Batal")
+                }
+            }
+        )
     }
 
     if (showAddItem) {

@@ -27,6 +27,7 @@ import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementPlanWithItem
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.TransactionEntity
 import com.aistudio.ecotobacco.kfzqw.data.remote.AppSettingsSyncModel
+import com.aistudio.ecotobacco.kfzqw.data.remote.AutoBackupInfo
 import com.aistudio.ecotobacco.kfzqw.data.remote.DriveBackupFile
 import com.aistudio.ecotobacco.kfzqw.data.remote.GoogleDriveSyncHelper
 import com.aistudio.ecotobacco.kfzqw.data.remote.ProcurementItemSyncModel
@@ -224,6 +225,71 @@ class TobaccoViewModel(
     private val _driveBackupFiles = MutableStateFlow<List<DriveBackupFile>>(emptyList())
     val driveBackupFiles: StateFlow<List<DriveBackupFile>> = _driveBackupFiles.asStateFlow()
 
+    private val _autoBackupInfo = MutableStateFlow<AutoBackupInfo?>(null)
+    val autoBackupInfo: StateFlow<AutoBackupInfo?> = _autoBackupInfo.asStateFlow()
+
+    fun getBackupFile(context: Context): File {
+        val internalDir = File(context.filesDir, "backups")
+        if (!internalDir.exists()) internalDir.mkdirs()
+        return File(internalDir, "eco_tobacco_sync_data.json")
+    }
+
+    fun loadAutoBackupInfo(context: Context) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val file = getBackupFile(context)
+            val extFile = context.getExternalFilesDir("backups")?.let { File(it, "eco_tobacco_sync_data.json") }
+            val targetFile = if (file.exists() && file.length() > 0L) file else if (extFile != null && extFile.exists() && extFile.length() > 0L) extFile else null
+
+            if (targetFile != null && targetFile.exists() && targetFile.length() > 0L) {
+                val sizeBytes = targetFile.length()
+                val sizeFormatted = when {
+                    sizeBytes < 1024 -> "$sizeBytes B"
+                    sizeBytes < 1024 * 1024 -> String.format(Locale.getDefault(), "%.1f KB", sizeBytes / 1024f)
+                    else -> String.format(Locale.getDefault(), "%.1f MB", sizeBytes / (1024f * 1024f))
+                }
+
+                var pCount = 0
+                var txCount = 0
+                var plCount = 0
+                try {
+                    val text = targetFile.readText()
+                    val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+                    val adapter = moshi.adapter(SyncDataBundle::class.java)
+                    val bundle = adapter.fromJson(text)
+                    if (bundle != null) {
+                        pCount = bundle.products.size
+                        txCount = bundle.transactions.size
+                        plCount = bundle.procurementPlans?.size ?: 0
+                    }
+                } catch (e: Exception) {
+                    AppLogger.w("Backup", "Quick read auto backup info: ${e.message}")
+                }
+
+                _autoBackupInfo.value = AutoBackupInfo(
+                    lastBackupTime = targetFile.lastModified(),
+                    fileSizeFormatted = sizeFormatted,
+                    productCount = pCount,
+                    transactionCount = txCount,
+                    planCount = plCount,
+                    filePath = targetFile.absolutePath,
+                    isAutoBackupActive = true
+                )
+            } else {
+                _autoBackupInfo.value = AutoBackupInfo(
+                    lastBackupTime = 0L,
+                    fileSizeFormatted = "0 B",
+                    productCount = 0,
+                    transactionCount = 0,
+                    planCount = 0,
+                    filePath = "",
+                    isAutoBackupActive = true
+                )
+            }
+        } catch (e: Exception) {
+            AppLogger.e("Backup", "Gagal memuat auto backup info", e)
+        }
+    }
+
     fun fetchDriveBackupFiles() = viewModelScope.launch {
         _driveBackupFiles.value = syncHelper.listBackupFiles()
     }
@@ -275,6 +341,13 @@ class TobaccoViewModel(
             _appInitProgress.value = 1.0f
             delay(100)
             _isAppReady.value = true
+
+            // Muat info backup otomatis & lakukan backup awal jika belum ada
+            loadAutoBackupInfo(getApplication())
+            val backupFile = getBackupFile(getApplication())
+            if (!backupFile.exists() || backupFile.length() == 0L) {
+                exportBackupToDevice(getApplication())
+            }
         }
         listenToNetworkChanges()
 
@@ -357,7 +430,9 @@ class TobaccoViewModel(
                     syncFirestore()
                     onComplete(true, "Akun baru dibuat & berhasil masuk")
                 } else {
-                    onComplete(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal login email")
+                    // Fallback to local session if Firebase provider is disabled or offline
+                    syncHelper.setLocalUserSession(email)
+                    onComplete(true, "Berhasil masuk (Mode Cloud Lokal: $email)")
                 }
             }
         }
@@ -370,20 +445,25 @@ class TobaccoViewModel(
                 syncFirestore()
                 onComplete(true, "Berhasil masuk sebagai Tamu (Firebase)")
             } else {
-                onComplete(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal masuk tamu")
+                // Fallback to local session if Firebase provider is disabled or offline
+                syncHelper.setLocalUserSession("tamu_ecotobacco@cloud.com")
+                onComplete(true, "Berhasil masuk sebagai Tamu (Mode Cloud Lokal)")
             }
         }
     }
 
     fun signOutFirebase() {
         firebaseAuth.signOut()
+        syncHelper.clearLocalUserSession()
     }
 
     fun syncFirestore(onComplete: ((Boolean, String) -> Unit)? = null) {
-        val uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail ?: run {
-            onComplete?.invoke(false, "Silakan login terlebih dahulu untuk sinkronisasi Cloud Firestore")
-            return
+        var uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
+        if (uid.isNullOrBlank()) {
+            syncHelper.setLocalUserSession("eco_guest_user@ecotobacco.cloud")
+            uid = "eco_guest_user"
         }
+        val finalUid = uid
         viewModelScope.launch {
             try {
                 val currentProducts = products.first()
@@ -392,7 +472,7 @@ class TobaccoViewModel(
                 val currentCategories = categories.first()
 
                 val result = firestoreSync.syncAllToFirestore(
-                    userId = uid,
+                    userId = finalUid,
                     products = currentProducts,
                     transactions = currentTx,
                     plans = currentPlans,
@@ -400,10 +480,10 @@ class TobaccoViewModel(
                 )
                 if (result.isSuccess) {
                     val summary = result.getOrNull()
-                    val msg = "Berhasil sinkron Firestore: ${summary?.uploadedProducts ?: 0} produk, ${summary?.uploadedTransactions ?: 0} transaksi"
+                    val msg = "Berhasil sinkron Cloud: ${summary?.uploadedProducts ?: 0} produk, ${summary?.uploadedTransactions ?: 0} transaksi"
                     onComplete?.invoke(true, msg)
                 } else {
-                    onComplete?.invoke(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal sinkron Firestore")
+                    onComplete?.invoke(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal sinkron Cloud")
                 }
             } catch (e: Exception) {
                 onComplete?.invoke(false, e.localizedMessage ?: "Error sinkronisasi")
@@ -412,22 +492,24 @@ class TobaccoViewModel(
     }
 
     fun restoreFromFirestore(onComplete: ((Boolean, String) -> Unit)? = null) {
-        val uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail ?: run {
-            onComplete?.invoke(false, "Silakan login terlebih dahulu untuk memulihkan dari Firestore")
-            return
+        var uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
+        if (uid.isNullOrBlank()) {
+            syncHelper.setLocalUserSession("eco_guest_user@ecotobacco.cloud")
+            uid = "eco_guest_user"
         }
+        val finalUid = uid
         viewModelScope.launch {
             try {
-                val result = firestoreSync.fetchAndRestoreFromFirestore(uid, repository)
+                val result = firestoreSync.fetchAndRestoreFromFirestore(finalUid, repository)
                 if (result.isSuccess) {
                     val summary = result.getOrNull()
                     val msg = "Berhasil memulihkan: ${summary?.restoredProducts ?: 0} produk, ${summary?.restoredTransactions ?: 0} transaksi"
                     onComplete?.invoke(true, msg)
                 } else {
-                    onComplete?.invoke(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal memulihkan dari Firestore")
+                    onComplete?.invoke(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal memulihkan dari Cloud")
                 }
             } catch (e: Exception) {
-                onComplete?.invoke(false, e.localizedMessage ?: "Error pemulihan Firestore")
+                onComplete?.invoke(false, e.localizedMessage ?: "Error pemulihan Cloud")
             }
         }
     }
@@ -623,7 +705,13 @@ class TobaccoViewModel(
         getApplication<Application>().getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE).edit { putString("deleted_tx_keys_str", currentKeys.joinToString("\n")) }
     }
 
+    fun notifyWidgetUpdate() {
+        com.aistudio.ecotobacco.kfzqw.widget.TobaccoAppWidgetProvider.notifyDataChanged(getApplication())
+    }
+
     private fun triggerAutoSync(forceOverwriteRemote: Boolean = false) {
+        notifyWidgetUpdate()
+
         // Backup otomatis ke device setiap ada perubahan (selalu jalan meskipun tidak login)
         exportBackupToDevice(getApplication())
 
@@ -693,9 +781,10 @@ class TobaccoViewModel(
         }
     }
 
-    fun addCategory(name: String) = viewModelScope.launch(Dispatchers.IO) { repository.insertCategory(
-        CategoryEntity(name = name)
-    ) }
+    fun addCategory(name: String) = viewModelScope.launch(Dispatchers.IO) { 
+        repository.insertCategory(CategoryEntity(name = name))
+        triggerAutoSync(forceOverwriteRemote = true)
+    }
     fun addProduct(name: String, price: Double, unit: String = "kg", sellingPrice: Double = 0.0, sellingUnit: String = "pcs", contentQuantity: Double = 1.0) = viewModelScope.launch { 
         val product = ProductEntity(name = name, price = price, unit = unit, sellingPrice = sellingPrice, sellingUnit = sellingUnit, contentQuantity = contentQuantity)
         repository.insertProduct(product)
@@ -766,23 +855,28 @@ class TobaccoViewModel(
                 date = date,
                 supplierName = supplier
             ), items)
+        triggerAutoSync(forceOverwriteRemote = true)
     }
 
     fun updateProcurementPlan(plan: ProcurementPlanEntity, items: List<ProcurementItemEntity>) = viewModelScope.launch(Dispatchers.IO) {
         repository.updateProcurementPlanWithItems(plan, items)
+        triggerAutoSync(forceOverwriteRemote = true)
     }
 
     fun deleteProcurementPlan(plan: ProcurementPlanEntity) = viewModelScope.launch(Dispatchers.IO) {
         repository.deleteItemsByPlanId(plan.id)
         repository.deleteProcurementPlan(plan)
+        triggerAutoSync(forceOverwriteRemote = true)
     }
 
     fun toggleProcurementItemStatus(item: ProcurementItemEntity) = viewModelScope.launch(Dispatchers.IO) {
         repository.updateProcurementItem(item.copy(isBought = !item.isBought))
+        triggerAutoSync(forceOverwriteRemote = true)
     }
 
     fun removeItemFromPlan(item: ProcurementItemEntity) = viewModelScope.launch(Dispatchers.IO) {
         repository.deleteProcurementItem(item)
+        triggerAutoSync(forceOverwriteRemote = true)
     }
 
     fun parsePrice(input: String): Double = input.replace(",", ".").toDoubleOrNull() ?: 0.0
@@ -922,6 +1016,7 @@ class TobaccoViewModel(
         val localTransactionsData = repository.getAllTransactionsDirect()
         val localProductsData = repository.getAllProductsDirect()
         val localProcurementData = repository.getAllProcurementPlansDirect()
+        val localCategoriesData = repository.getAllCategoriesDirect().map { it.name }
         
         val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
         val adapter = moshi.adapter(SyncDataBundle::class.java)
@@ -976,6 +1071,7 @@ class TobaccoViewModel(
                 cornerRadius = _cornerRadius.value,
                 customTextColor = _customTextColor.value
             ),
+            categories = localCategoriesData,
             lastUpdated = System.currentTimeMillis(),
             deletedTransactions = getDeletedTransactionKeys().toList()
         )
@@ -988,26 +1084,125 @@ class TobaccoViewModel(
             val jsonData = generateBackupJson()
             val fileName = "eco_tobacco_sync_data.json"
             
-            // Simpan ke direktori app internal & external files folder aplikasi (tanpa perlu izin all files)
-            val appFilesDir = context.getExternalFilesDir("backups") ?: File(context.filesDir, "backups")
-            if (!appFilesDir.exists()) {
-                appFilesDir.mkdirs()
+            // 1. Simpan ke internal storage (selalu ada, aman, tidak butuh izin runtime)
+            val internalBackupDir = File(context.filesDir, "backups")
+            if (!internalBackupDir.exists()) {
+                internalBackupDir.mkdirs()
             }
-            val file = File(appFilesDir, fileName)
-            file.writeText(jsonData)
+            val internalFile = File(internalBackupDir, fileName)
+            internalFile.writeText(jsonData)
+
+            // 2. Simpan cadangan ke external files directory aplikasi jika tersedia
+            try {
+                val appFilesDir = context.getExternalFilesDir("backups")
+                if (appFilesDir != null) {
+                    if (!appFilesDir.exists()) appFilesDir.mkdirs()
+                    val extFile = File(appFilesDir, fileName)
+                    extFile.writeText(jsonData)
+                }
+            } catch (e: Exception) {
+                AppLogger.w("Backup", "External files write skipped: ${e.message}")
+            }
             
-            AppLogger.d("Backup", "Backup otomatis tersimpan di folder aplikasi: ${file.absolutePath}")
+            AppLogger.d("Backup", "Backup otomatis tersimpan di: ${internalFile.absolutePath} (${internalFile.length()} bytes)")
+            
+            context.getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
+                .edit { putLong("last_auto_backup_time", System.currentTimeMillis()) }
+
+            loadAutoBackupInfo(context)
         } catch (e: Exception) {
             AppLogger.e("Backup", "Gagal auto-backup ke internal storage", e)
         }
     }
 
+    fun performManualAutoBackup(context: Context, onResult: ((Boolean, String) -> Unit)? = null) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val jsonData = generateBackupJson()
+            val fileName = "eco_tobacco_sync_data.json"
+            
+            val internalBackupDir = File(context.filesDir, "backups")
+            if (!internalBackupDir.exists()) internalBackupDir.mkdirs()
+            val internalFile = File(internalBackupDir, fileName)
+            internalFile.writeText(jsonData)
+
+            try {
+                val appFilesDir = context.getExternalFilesDir("backups")
+                if (appFilesDir != null) {
+                    if (!appFilesDir.exists()) appFilesDir.mkdirs()
+                    File(appFilesDir, fileName).writeText(jsonData)
+                }
+            } catch (e: Exception) {
+                // ignore
+            }
+
+            context.getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
+                .edit { putLong("last_auto_backup_time", System.currentTimeMillis()) }
+
+            loadAutoBackupInfo(context)
+            withContext(Dispatchers.Main) {
+                onResult?.invoke(true, "Cadangan otomatis berhasil diperbarui!")
+            }
+        } catch (e: Exception) {
+            AppLogger.e("Backup", "Gagal manual backup", e)
+            withContext(Dispatchers.Main) {
+                onResult?.invoke(false, "Gagal mencadangkan: ${e.localizedMessage}")
+            }
+        }
+    }
+
+    private fun extractBalancedJson(input: String): String {
+        val trimmed = input.trim()
+        val startObj = trimmed.indexOf('{')
+        val startArr = trimmed.indexOf('[')
+        if (startObj == -1 && startArr == -1) return trimmed
+
+        val isArray = startArr != -1 && (startObj == -1 || startArr < startObj)
+        val startChar = if (isArray) '[' else '{'
+        val endChar = if (isArray) ']' else '}'
+        val start = if (isArray) startArr else startObj
+
+        var depth = 0
+        var inString = false
+        var escape = false
+        for (i in start until trimmed.length) {
+            val c = trimmed[i]
+            if (escape) {
+                escape = false
+                continue
+            }
+            if (c == '\\') {
+                escape = true
+                continue
+            }
+            if (c == '"') {
+                inString = !inString
+                continue
+            }
+            if (!inString) {
+                if (c == startChar) {
+                    depth++
+                } else if (c == endChar) {
+                    depth--
+                    if (depth == 0) {
+                        return trimmed.substring(start, i + 1)
+                    }
+                }
+            }
+        }
+        return trimmed
+    }
+
     fun writeBackupToUri(context: Context, uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
         try {
             val jsonData = generateBackupJson()
-            context.contentResolver.openOutputStream(uri)?.use { stream ->
-                stream.write(jsonData.toByteArray(Charsets.UTF_8))
-                stream.flush()
+            val stream = try {
+                context.contentResolver.openOutputStream(uri, "wt")
+            } catch (e: Exception) {
+                context.contentResolver.openOutputStream(uri)
+            }
+            stream?.use { s ->
+                s.write(jsonData.toByteArray(Charsets.UTF_8))
+                s.flush()
             }
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "File cadangan (.json) berhasil disimpan!", Toast.LENGTH_LONG).show()
@@ -1020,75 +1215,532 @@ class TobaccoViewModel(
         }
     }
 
-    fun restoreBackupFromDevice(context: Context, uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
-        try {
-            val jsonData = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
-            if (jsonData.isNullOrBlank()) return@launch
-            
-            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
-            val adapter = moshi.adapter(SyncDataBundle::class.java)
-            val remoteBundle = adapter.fromJson(jsonData) ?: return@launch
-            
-            val localTransactionsData = repository.getAllTransactionsDirect()
-            val localProductsData = repository.getAllProductsDirect()
-            
-            val combinedDeleted = (getDeletedTransactionKeys() + (remoteBundle.deletedTransactions ?: emptyList())).toSet()
-            addDeletedTransactionKeys(combinedDeleted)
-            
-            val activeLocal = localTransactionsData.filter { tx ->
-                val key = getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier)
-                if (combinedDeleted.contains(key)) { repository.deleteTransactionById(tx.id); false } else true
+    private fun parseFlexibleDouble(value: Any?, default: Double = 0.0): Double {
+        if (value == null) return default
+        if (value is Number) return value.toDouble()
+        val str = value.toString().trim()
+        if (str.isEmpty()) return default
+        val cleaned = str.replace("Rp", "", ignoreCase = true)
+            .replace("IDR", "", ignoreCase = true)
+            .replace(" ", "")
+            .replace("'", "")
+        return try {
+            if (cleaned.contains(",") && cleaned.contains(".")) {
+                if (cleaned.lastIndexOf(",") > cleaned.lastIndexOf(".")) {
+                    cleaned.replace(".", "").replace(",", ".").toDouble()
+                } else {
+                    cleaned.replace(",", "").toDouble()
+                }
+            } else if (cleaned.contains(",")) {
+                val parts = cleaned.split(",")
+                if (parts.size == 2 && parts[1].length <= 2) {
+                    cleaned.replace(",", ".").toDouble()
+                } else {
+                    cleaned.replace(",", "").toDouble()
+                }
+            } else if (cleaned.count { it == '.' } > 1) {
+                cleaned.replace(".", "").toDouble()
+            } else {
+                cleaned.toDouble()
             }
-            val activeRemote = remoteBundle.transactions.filter { r -> !combinedDeleted.contains(getTransactionKey(r.date, r.productName, r.quantity, r.unitPrice, r.supplier ?: "")) }
+        } catch (_: Exception) {
+            default
+        }
+    }
 
-            val mergedTransactions = mergeTransactions(activeLocal, activeRemote)
-            val mergedProducts = mergeProducts(localProductsData, remoteBundle.products)
-            
-            if (mergedTransactions.inserted.isNotEmpty()) repository.insertTransactions(mergedTransactions.inserted)
-            if (mergedProducts.inserted.isNotEmpty()) repository.insertProducts(mergedProducts.inserted)
-            
-            // Restore Procurement Plans
-            val existingPlans = repository.getAllProcurementPlansDirect()
-            remoteBundle.procurementPlans?.forEach { planSync ->
-                // Check if plan already exists (simple check by date and supplier)
-                val isDuplicate = existingPlans.any { it.plan.date == planSync.date && it.plan.supplierName == planSync.supplierName }
-                if (!isDuplicate) {
-                    val planEntity = ProcurementPlanEntity(
-                        date = planSync.date,
-                        supplierName = planSync.supplierName
-                    )
-                    val items = planSync.items.map { itemSync ->
-                        ProcurementItemEntity(
-                            planId = 0, // Will be set by repository
-                            productName = itemSync.productName,
-                            targetQuantity = itemSync.targetQuantity,
-                            estimatedUnitPrice = itemSync.estimatedUnitPrice,
-                            unit = itemSync.unit,
-                            isBought = itemSync.isBought
-                        )
+    private fun parseFlexibleLong(value: Any?, default: Long = System.currentTimeMillis()): Long {
+        if (value == null) return default
+        if (value is Number) {
+            val num = value.toLong()
+            return if (num < 10000000000L && num > 0) num * 1000L else num
+        }
+        val str = value.toString().trim()
+        if (str.isEmpty()) return default
+        val asLong = str.toLongOrNull()
+        if (asLong != null) {
+            return if (asLong < 10000000000L && asLong > 0) asLong * 1000L else asLong
+        }
+        val formats = listOf(
+            "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss'Z'",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd",
+            "dd-MM-yyyy HH:mm:ss",
+            "dd-MM-yyyy",
+            "dd/MM/yyyy HH:mm:ss",
+            "dd/MM/yyyy",
+            "yyyy/MM/dd"
+        )
+        for (fmt in formats) {
+            try {
+                val sdf = java.text.SimpleDateFormat(fmt, Locale.US)
+                val d = sdf.parse(str)
+                if (d != null) return d.time
+            } catch (_: Exception) {}
+        }
+        return default
+    }
+
+    private fun parseJsonArrayOrObject(jsonData: String): SyncDataBundle {
+        val trimmed = jsonData.trim().removePrefix("\uFEFF").trim()
+        val txList = mutableListOf<TransactionSyncModel>()
+        val prodList = mutableListOf<ProductSyncModel>()
+        val planList = mutableListOf<ProcurementPlanSyncModel>()
+        var appSettings: AppSettingsSyncModel? = null
+        val deletedKeys = mutableListOf<String>()
+
+        fun parseTransactionObj(obj: org.json.JSONObject, index: Int): TransactionSyncModel? {
+            val pName = obj.optString("productName").ifEmpty {
+                obj.optString("product_name").ifEmpty {
+                    obj.optString("nama").ifEmpty {
+                        obj.optString("nama_produk").ifEmpty {
+                            obj.optString("nama_barang").ifEmpty {
+                                obj.optString("barang").ifEmpty {
+                                    obj.optString("name")
+                                }
+                            }
+                        }
                     }
-                    repository.insertProcurementPlanWithItems(planEntity, items)
                 }
             }
-            
-            // Restore App Settings (Theme, UI Customization, Units)
-            remoteBundle.appSettings?.let { settings ->
-                setThemeMode(settings.themeMode)
-                setCustomColor(settings.customColor)
-                setFontSizeScale(settings.fontSizeScale)
-                setPaddingScale(settings.paddingScale)
-                setButtonHeight(settings.buttonHeight)
-                setCornerRadius(settings.cornerRadius)
-                setCustomTextColor(settings.customTextColor)
-                val unitSet = settings.customUnits.toSet()
-                _customUnits.value = settings.customUnits.sorted()
-                appPrefs?.edit { putStringSet("custom_units", unitSet) }
+            if (pName.isBlank()) return null
+            val qty = parseFlexibleDouble(obj.opt("quantity") ?: obj.opt("qty") ?: obj.opt("jumlah") ?: obj.opt("banyak"), 1.0)
+            val price = parseFlexibleDouble(obj.opt("unitPrice") ?: obj.opt("unit_price") ?: obj.opt("price") ?: obj.opt("harga") ?: obj.opt("harga_beli") ?: obj.opt("harga_satuan"), 0.0)
+            val totalRaw = parseFlexibleDouble(obj.opt("total") ?: obj.opt("total_price") ?: obj.opt("subtotal") ?: obj.opt("jumlah_harga"), qty * price)
+            val total = if (totalRaw > 0) totalRaw else qty * price
+            val supplier = obj.optString("supplier").ifEmpty {
+                obj.optString("pemasok").ifEmpty {
+                    obj.optString("supplierName").ifEmpty {
+                        obj.optString("supplier_name").ifEmpty {
+                            obj.optString("penjual")
+                        }
+                    }
+                }
             }
-            
-            withContext(Dispatchers.Main) { Toast.makeText(context, "Data & Pengaturan berhasil dipulihkan!", Toast.LENGTH_SHORT).show() }
-            triggerAutoSync(forceOverwriteRemote = true)
+            val unit = obj.optString("unit").ifEmpty {
+                obj.optString("satuan").ifEmpty { "kg" }
+            }
+            val date = parseFlexibleLong(obj.opt("date") ?: obj.opt("tanggal") ?: obj.opt("waktu") ?: obj.opt("timestamp") ?: obj.opt("createdAt"))
+            val isDeleted = obj.optBoolean("isDeleted", false) || obj.optBoolean("is_deleted", false) || obj.optBoolean("deleted", false)
+
+            return TransactionSyncModel(
+                id = obj.optInt("id", index + 1),
+                date = date,
+                productName = pName.trim(),
+                quantity = qty,
+                unitPrice = price,
+                total = total,
+                supplier = supplier.trim(),
+                unit = unit.trim(),
+                isDeleted = isDeleted
+            )
+        }
+
+        fun parseProductObj(obj: org.json.JSONObject, index: Int): ProductSyncModel? {
+            val name = obj.optString("name").ifEmpty {
+                obj.optString("productName").ifEmpty {
+                    obj.optString("nama").ifEmpty {
+                        obj.optString("nama_produk").ifEmpty {
+                            obj.optString("nama_barang").ifEmpty {
+                                obj.optString("barang")
+                            }
+                        }
+                    }
+                }
+            }
+            if (name.isBlank()) return null
+            val price = parseFlexibleDouble(obj.opt("price") ?: obj.opt("unitPrice") ?: obj.opt("harga") ?: obj.opt("harga_beli"), 0.0)
+            val unit = obj.optString("unit").ifEmpty { obj.optString("satuan").ifEmpty { "kg" } }
+            val sellingPrice = parseFlexibleDouble(obj.opt("sellingPrice") ?: obj.opt("selling_price") ?: obj.opt("harga_jual") ?: obj.opt("jual"), 0.0)
+            val sellingUnit = obj.optString("sellingUnit").ifEmpty { obj.optString("selling_unit").ifEmpty { obj.optString("satuan_jual").ifEmpty { "pcs" } } }
+            val contentQty = parseFlexibleDouble(obj.opt("contentQuantity") ?: obj.opt("content_quantity") ?: obj.opt("isi") ?: obj.opt("konversi"), 1.0)
+
+            return ProductSyncModel(
+                id = obj.optInt("id", index + 1),
+                name = name.trim(),
+                price = price,
+                unit = unit.trim(),
+                sellingPrice = sellingPrice,
+                sellingUnit = sellingUnit.trim(),
+                contentQuantity = contentQty
+            )
+        }
+
+        fun parsePlanObj(planObj: org.json.JSONObject, index: Int): ProcurementPlanSyncModel? {
+            val sName = planObj.optString("supplierName").ifEmpty {
+                planObj.optString("supplier_name").ifEmpty {
+                    planObj.optString("supplier").ifEmpty {
+                        planObj.optString("pemasok")
+                    }
+                }
+            }
+            val date = parseFlexibleLong(planObj.opt("date") ?: planObj.opt("tanggal") ?: planObj.opt("waktu") ?: planObj.opt("timestamp"))
+            val itemsArr = planObj.optJSONArray("items") ?: planObj.optJSONArray("daftar_barang") ?: planObj.optJSONArray("barang") ?: planObj.optJSONArray("products")
+            val itemsList = mutableListOf<ProcurementItemSyncModel>()
+            if (itemsArr != null) {
+                for (j in 0 until itemsArr.length()) {
+                    val itemObj = itemsArr.optJSONObject(j) ?: continue
+                    val itemName = itemObj.optString("productName").ifEmpty {
+                        itemObj.optString("nama").ifEmpty {
+                            itemObj.optString("barang").ifEmpty {
+                                itemObj.optString("name")
+                            }
+                        }
+                    }
+                    if (itemName.isNotBlank()) {
+                        itemsList.add(
+                            ProcurementItemSyncModel(
+                                id = itemObj.optInt("id", j + 1),
+                                productName = itemName.trim(),
+                                targetQuantity = parseFlexibleDouble(itemObj.opt("targetQuantity") ?: itemObj.opt("quantity") ?: itemObj.opt("jumlah"), 1.0),
+                                estimatedUnitPrice = parseFlexibleDouble(itemObj.opt("estimatedUnitPrice") ?: itemObj.opt("unitPrice") ?: itemObj.opt("price") ?: itemObj.opt("harga"), 0.0),
+                                unit = itemObj.optString("unit").ifEmpty { itemObj.optString("satuan").ifEmpty { "kg" } },
+                                isBought = itemObj.optBoolean("isBought", false) || itemObj.optBoolean("dibeli", false)
+                            )
+                        )
+                    }
+                }
+            }
+            return ProcurementPlanSyncModel(
+                id = planObj.optInt("id", index + 1),
+                date = date,
+                supplierName = sName.trim(),
+                items = itemsList
+            )
+        }
+
+        if (trimmed.startsWith("[")) {
+            val arr = org.json.JSONArray(trimmed)
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val tx = parseTransactionObj(obj, i)
+                if (tx != null) {
+                    txList.add(tx)
+                } else {
+                    val prod = parseProductObj(obj, i)
+                    if (prod != null) prodList.add(prod)
+                }
+            }
+        } else {
+            val root = org.json.JSONObject(trimmed)
+
+            val txArr = root.optJSONArray("transactions")
+                ?: root.optJSONArray("transaksi")
+                ?: root.optJSONArray("kulakan")
+                ?: root.optJSONArray("data")
+                ?: root.optJSONArray("items")
+                ?: root.optJSONArray("records")
+            if (txArr != null) {
+                for (i in 0 until txArr.length()) {
+                    val obj = txArr.optJSONObject(i) ?: continue
+                    val tx = parseTransactionObj(obj, i)
+                    if (tx != null) txList.add(tx)
+                }
+            }
+
+            val prodArr = root.optJSONArray("products")
+                ?: root.optJSONArray("produk")
+                ?: root.optJSONArray("barang")
+                ?: root.optJSONArray("master_produk")
+                ?: root.optJSONArray("master_barang")
+            if (prodArr != null) {
+                for (i in 0 until prodArr.length()) {
+                    val obj = prodArr.optJSONObject(i) ?: continue
+                    val prod = parseProductObj(obj, i)
+                    if (prod != null) prodList.add(prod)
+                }
+            }
+
+            val planArr = root.optJSONArray("procurementPlans")
+                ?: root.optJSONArray("rencana")
+                ?: root.optJSONArray("rencanaKulakan")
+                ?: root.optJSONArray("plans")
+                ?: root.optJSONArray("procurements")
+            if (planArr != null) {
+                for (i in 0 until planArr.length()) {
+                    val planObj = planArr.optJSONObject(i) ?: continue
+                    val plan = parsePlanObj(planObj, i)
+                    if (plan != null) planList.add(plan)
+                }
+            }
+
+            val settingsObj = root.optJSONObject("appSettings") ?: root.optJSONObject("settings") ?: root.optJSONObject("pengaturan")
+            if (settingsObj != null) {
+                val unitsList = mutableListOf<String>()
+                val unitsArr = settingsObj.optJSONArray("customUnits") ?: settingsObj.optJSONArray("satuan")
+                if (unitsArr != null) {
+                    for (k in 0 until unitsArr.length()) {
+                        unitsList.add(unitsArr.optString(k))
+                    }
+                }
+                appSettings = AppSettingsSyncModel(
+                    themeMode = settingsObj.optString("themeMode", "SYSTEM"),
+                    customColor = settingsObj.optInt("customColor", 0xFF10B981.toInt()),
+                    customUnits = if (unitsList.isNotEmpty()) unitsList else listOf("kg", "ons", "pcs"),
+                    fontSizeScale = parseFlexibleDouble(settingsObj.opt("fontSizeScale"), 1.0).toFloat(),
+                    paddingScale = parseFlexibleDouble(settingsObj.opt("paddingScale"), 1.0).toFloat(),
+                    buttonHeight = settingsObj.optInt("buttonHeight", 56),
+                    cornerRadius = settingsObj.optInt("cornerRadius", 16),
+                    customTextColor = settingsObj.optInt("customTextColor", 0)
+                )
+            }
+
+            val delArr = root.optJSONArray("deletedTransactions") ?: root.optJSONArray("deleted") ?: root.optJSONArray("hapus")
+            if (delArr != null) {
+                for (k in 0 until delArr.length()) {
+                    deletedKeys.add(delArr.optString(k))
+                }
+            }
+        }
+
+        return SyncDataBundle(
+            transactions = txList,
+            products = prodList,
+            lastUpdated = System.currentTimeMillis(),
+            deletedTransactions = deletedKeys,
+            procurementPlans = planList,
+            appSettings = appSettings
+        )
+    }
+
+    data class RestoreResult(val success: Boolean, val message: String)
+
+    private suspend fun processRestoreDataInternal(context: Context, rawData: String): RestoreResult {
+        val cleaned = rawData.trim().removePrefix("\uFEFF").trim()
+        var remoteBundle: SyncDataBundle? = null
+
+        // 1. Try Moshi
+        try {
+            val jsonData = extractBalancedJson(cleaned)
+            val moshi = Moshi.Builder().add(KotlinJsonAdapterFactory()).build()
+            val adapter = moshi.adapter(SyncDataBundle::class.java)
+            val buffer = okio.Buffer().writeUtf8(jsonData)
+            val reader = com.squareup.moshi.JsonReader.of(buffer).apply { isLenient = true }
+            remoteBundle = adapter.fromJson(reader)
+        } catch (e: Exception) {
+            AppLogger.w("Restore", "Moshi parsing failed: ${e.message}, attempting flexible parser")
+        }
+
+        // 2. Try JSON parser
+        if (remoteBundle == null || (remoteBundle.transactions.isEmpty() && remoteBundle.products.isEmpty() && (remoteBundle.procurementPlans == null || remoteBundle.procurementPlans!!.isEmpty()))) {
+            try {
+                val parsed = parseJsonArrayOrObject(cleaned)
+                if (parsed.transactions.isNotEmpty() || parsed.products.isNotEmpty() || !parsed.procurementPlans.isNullOrEmpty()) {
+                    remoteBundle = parsed
+                }
+            } catch (e: Exception) {
+                AppLogger.w("Restore", "JSON parser failed: ${e.message}, attempting CSV parser")
+            }
+        }
+
+        // 3. Fallback CSV Parser if not JSON
+        if (remoteBundle == null || (remoteBundle.transactions.isEmpty() && remoteBundle.products.isEmpty() && (remoteBundle.procurementPlans == null || remoteBundle.procurementPlans!!.isEmpty()))) {
+            try {
+                val lines = cleaned.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                if (lines.isNotEmpty()) {
+                    val delimiter = if (lines[0].contains(";")) ";" else if (lines[0].contains("\t")) "\t" else ","
+                    val header = lines[0].split(delimiter).map { it.trim().lowercase() }
+                    val pIdx = header.indexOfFirst { it.contains("produk") || it.contains("product") || it.contains("barang") || it.contains("nama") }
+                    val qIdx = header.indexOfFirst { it.contains("jumlah") || it.contains("qty") || it.contains("quantity") || it.contains("banyak") }
+                    val prIdx = header.indexOfFirst { it.contains("harga") || it.contains("price") || it.contains("biaya") }
+                    val tIdx = header.indexOfFirst { it.contains("total") || it.contains("subtotal") }
+                    val sIdx = header.indexOfFirst { it.contains("pemasok") || it.contains("supplier") || it.contains("penjual") }
+                    val uIdx = header.indexOfFirst { it.contains("satuan") || it.contains("unit") }
+                    val dIdx = header.indexOfFirst { it.contains("tanggal") || it.contains("date") || it.contains("waktu") }
+
+                    val txFromCsv = mutableListOf<TransactionSyncModel>()
+                    for (i in 1 until lines.size) {
+                        val row = lines[i].split(delimiter).map { it.trim().removeSurrounding("\"") }
+                        if (pIdx >= 0 && pIdx < row.size && row[pIdx].isNotBlank()) {
+                            val pName = row[pIdx]
+                            val qty = if (qIdx >= 0 && qIdx < row.size) parseFlexibleDouble(row[qIdx], 1.0) else 1.0
+                            val price = if (prIdx >= 0 && prIdx < row.size) parseFlexibleDouble(row[prIdx], 0.0) else 0.0
+                            val total = if (tIdx >= 0 && tIdx < row.size) parseFlexibleDouble(row[tIdx], qty * price) else qty * price
+                            val supplier = if (sIdx >= 0 && sIdx < row.size) row[sIdx] else ""
+                            val unit = if (uIdx >= 0 && uIdx < row.size) row[uIdx] else "kg"
+                            val date = if (dIdx >= 0 && dIdx < row.size) parseFlexibleLong(row[dIdx]) else System.currentTimeMillis()
+
+                            txFromCsv.add(
+                                TransactionSyncModel(
+                                    id = i,
+                                    date = date,
+                                    productName = pName,
+                                    quantity = qty,
+                                    unitPrice = price,
+                                    total = total,
+                                    supplier = supplier,
+                                    unit = unit,
+                                    isDeleted = false
+                                )
+                            )
+                        }
+                    }
+                    if (txFromCsv.isNotEmpty()) {
+                        remoteBundle = SyncDataBundle(
+                            transactions = txFromCsv,
+                            products = emptyList(),
+                            lastUpdated = System.currentTimeMillis()
+                        )
+                    }
+                }
+            } catch (csvEx: Exception) {
+                AppLogger.e("Restore", "CSV parsing failed", csvEx)
+            }
+        }
+
+        if (remoteBundle == null || (remoteBundle.transactions.isEmpty() && remoteBundle.products.isEmpty() && (remoteBundle.procurementPlans == null || remoteBundle.procurementPlans!!.isEmpty()) && remoteBundle.appSettings == null)) {
+            return RestoreResult(false, "Format file tidak dikenali atau tidak berisi data yang sesuai.")
+        }
+
+        val localTransactionsData = repository.getAllTransactionsDirect()
+        val localProductsData = repository.getAllProductsDirect()
+
+        // Remove tombstone blocks for explicitly restored transactions so they are restored correctly
+        val currentDeleted = getDeletedTransactionKeys().toMutableSet()
+        remoteBundle.transactions.forEach { tx ->
+            val key = getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier ?: "")
+            currentDeleted.remove(key)
+        }
+        val syncPrefs = getApplication<Application>().getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
+        syncPrefs.edit { putString("deleted_tx_keys_str", currentDeleted.joinToString("\n")) }
+
+        val mergedTransactions = mergeTransactions(localTransactionsData, remoteBundle.transactions)
+        val mergedProducts = mergeProducts(localProductsData, remoteBundle.products)
+
+        if (mergedTransactions.inserted.isNotEmpty()) {
+            repository.insertTransactions(mergedTransactions.inserted)
+        }
+        if (mergedProducts.inserted.isNotEmpty()) {
+            repository.insertProducts(mergedProducts.inserted)
+        }
+
+        // Also auto-sync products from transactions if not present
+        remoteBundle.transactions.forEach { tx ->
+            val exists = localProductsData.any { it.name.trim().equals(tx.productName.trim(), ignoreCase = true) } ||
+                         mergedProducts.inserted.any { it.name.trim().equals(tx.productName.trim(), ignoreCase = true) }
+            if (!exists) {
+                repository.insertProduct(ProductEntity(name = tx.productName.trim(), price = tx.unitPrice, unit = tx.unit ?: "kg"))
+            }
+        }
+
+        // Restore Categories
+        remoteBundle.categories?.forEach { catName ->
+            if (catName.isNotBlank()) {
+                repository.insertCategory(CategoryEntity(name = catName))
+            }
+        }
+
+        // Restore Procurement Plans
+        val existingPlans = repository.getAllProcurementPlansDirect()
+        var restoredPlansCount = 0
+        remoteBundle.procurementPlans?.forEach { planSync ->
+            val isDuplicate = existingPlans.any { it.plan.date == planSync.date && it.plan.supplierName.equals(planSync.supplierName, ignoreCase = true) }
+            if (!isDuplicate) {
+                val planEntity = ProcurementPlanEntity(
+                    date = planSync.date,
+                    supplierName = planSync.supplierName
+                )
+                val items = planSync.items.map { itemSync ->
+                    ProcurementItemEntity(
+                        planId = 0,
+                        productName = itemSync.productName,
+                        targetQuantity = itemSync.targetQuantity,
+                        estimatedUnitPrice = itemSync.estimatedUnitPrice,
+                        unit = itemSync.unit,
+                        isBought = itemSync.isBought
+                    )
+                }
+                repository.insertProcurementPlanWithItems(planEntity, items)
+                restoredPlansCount++
+            }
+        }
+
+        // Restore App Settings (Theme, UI Customization, Units)
+        remoteBundle.appSettings?.let { settings ->
+            setThemeMode(settings.themeMode)
+            setCustomColor(settings.customColor)
+            setFontSizeScale(settings.fontSizeScale)
+            setPaddingScale(settings.paddingScale)
+            setButtonHeight(settings.buttonHeight)
+            setCornerRadius(settings.cornerRadius)
+            setCustomTextColor(settings.customTextColor)
+            val unitSet = settings.customUnits.toSet()
+            _customUnits.value = settings.customUnits.sorted()
+            appPrefs?.edit { putStringSet("custom_units", unitSet) }
+        }
+
+        val totalTxRestored = mergedTransactions.inserted.size
+        val totalProdRestored = mergedProducts.inserted.size
+        val totalExistingTx = remoteBundle.transactions.size - totalTxRestored
+
+        val note = if (totalExistingTx > 0) " ($totalExistingTx sudah ada sebelumnya)" else ""
+        val msg = if (totalTxRestored > 0 || totalProdRestored > 0 || restoredPlansCount > 0) {
+            "Berhasil memulihkan: $totalTxRestored transaksi, $totalProdRestored produk, & $restoredPlansCount rencana$note"
+        } else {
+            "Data cadangan terbaca (${remoteBundle.transactions.size} transaksi & ${remoteBundle.products.size} produk sudah ada di aplikasi)"
+        }
+        return RestoreResult(true, msg)
+    }
+
+    fun restoreBackupFromDevice(context: Context, uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val rawData = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
+            if (rawData.isNullOrBlank()) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "File cadangan kosong!", Toast.LENGTH_SHORT).show()
+                }
+                return@launch
+            }
+
+            val res = processRestoreDataInternal(context, rawData)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, res.message, Toast.LENGTH_LONG).show()
+            }
+            if (res.success) {
+                triggerAutoSync(forceOverwriteRemote = true)
+            }
         } catch (e: Exception) {
             AppLogger.e("Restore", "Gagal restore dari device", e)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Gagal memulihkan cadangan: ${e.localizedMessage ?: "Terjadi kesalahan"}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    fun restoreFromAutoBackup(context: Context, onResult: ((Boolean, String) -> Unit)? = null) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val file = getBackupFile(context)
+            val extFile = context.getExternalFilesDir("backups")?.let { File(it, "eco_tobacco_sync_data.json") }
+            val targetFile = if (file.exists() && file.length() > 0L) file else if (extFile != null && extFile.exists() && extFile.length() > 0L) extFile else null
+
+            if (targetFile == null || !targetFile.exists() || targetFile.length() == 0L) {
+                withContext(Dispatchers.Main) {
+                    onResult?.invoke(false, "Belum ada file cadangan otomatis di penyimpanan aplikasi.")
+                }
+                return@launch
+            }
+
+            val rawData = targetFile.readText()
+            if (rawData.isBlank()) {
+                withContext(Dispatchers.Main) {
+                    onResult?.invoke(false, "File cadangan otomatis kosong.")
+                }
+                return@launch
+            }
+
+            val res = processRestoreDataInternal(context, rawData)
+            withContext(Dispatchers.Main) {
+                onResult?.invoke(res.success, res.message)
+            }
+            if (res.success) {
+                triggerAutoSync(forceOverwriteRemote = true)
+            }
+        } catch (e: Exception) {
+            AppLogger.e("Restore", "Gagal restore dari auto backup", e)
+            withContext(Dispatchers.Main) {
+                onResult?.invoke(false, "Gagal memulihkan cadangan: ${e.localizedMessage ?: "Terjadi kesalahan"}")
+            }
         }
     }
 

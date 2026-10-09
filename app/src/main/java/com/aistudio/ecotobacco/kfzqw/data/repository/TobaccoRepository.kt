@@ -61,5 +61,6 @@ class TobaccoRepository(
     }
 
     fun getAllCategories(): Flow<List<CategoryEntity>> = transactionDao.getAllCategories()
+    suspend fun getAllCategoriesDirect(): List<CategoryEntity> = transactionDao.getAllCategoriesDirect()
     suspend fun insertCategory(category: CategoryEntity) = transactionDao.insertCategory(category)
 }

@@ -4,4 +4,6 @@
     <string name="project_id">project-0be2da66-9971-458e-bfe</string>
     <string name="google_api_key">AIzaSyBWw2rT7zrVogQvFs_7ExqV-Y2mN4AjNto</string>
     <string name="default_web_client_id">680872469505-hic8du49lidqjsku9p7enbjv2ggtcpnr.apps.googleusercontent.com</string>
+    <string name="widget_name">Eco Tobacco Widget</string>
+    <string name="widget_description">Pantau stok, total transaksi &amp; akses cepat Eco Tobacco dari Home Screen</string>
 </resources>

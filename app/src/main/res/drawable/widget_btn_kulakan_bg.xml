@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <!-- Semi-transparent modern emerald glass button -->
+    <gradient
+        android:angle="135"
+        android:startColor="#E610B981"
+        android:endColor="#B3059669"
+        android:type="linear" />
+    <corners android:radius="10dp" />
+    <stroke
+        android:width="1dp"
+        android:color="#80A7F3D0" />
+</shape>

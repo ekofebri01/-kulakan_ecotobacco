@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <!-- Modern semi-transparent dark frosted glass look -->
+    <gradient
+        android:angle="135"
+        android:startColor="#D90F1E2E"
+        android:centerColor="#C4111E2E"
+        android:endColor="#B30B1420"
+        android:type="linear" />
+    <corners android:radius="22dp" />
+    <stroke
+        android:width="1dp"
+        android:color="#598CB4D2" />
+</shape>

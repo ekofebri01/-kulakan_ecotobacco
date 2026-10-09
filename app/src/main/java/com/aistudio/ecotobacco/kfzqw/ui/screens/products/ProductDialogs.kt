@@ -1,6 +1,8 @@
 package com.aistudio.ecotobacco.kfzqw.ui.screens.products
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.material3.Surface
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.DialogProperties
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.ui.components.UnitManagementDialog
@@ -81,9 +84,9 @@ fun AddProductDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(decorFitsSystemWindows = false),
         modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars).imePadding(),
-        title = { Text("Tambah Barang Baru", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
+        title = { Text("TAMBAH PRODUK BARU", fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp, color = MaterialTheme.colorScheme.onSurface) },
         containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -152,43 +155,55 @@ fun AddProductDialog(
                     }
                 }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            color = if (marginPerSellingUnit >= 0) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.12f) else Color(0xFFFF3366).copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.45f) else Color(0xFFFF3366).copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
-                        Text(
-                            text = "Untung per $selectedSellingUnit",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (marginPerSellingUnit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
-                        )
-                        Text(
-                            text = currencyFormatter.format(marginPerSellingUnit).replace("Rp", "Rp "),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (marginPerSellingUnit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
-                        )
-                        if (contentQty > 1) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
                             Text(
-                                text = "Modal: ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")} / $selectedSellingUnit",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.Gray
+                                text = "ESTIMASI LABA PER $selectedSellingUnit",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.6.sp,
+                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366)
+                            )
+                            Text(
+                                text = currencyFormatter.format(marginPerSellingUnit).replace("Rp", "Rp "),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366)
+                            )
+                            if (contentQty > 1) {
+                                Text(
+                                    text = "Modal: ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")} / $selectedSellingUnit",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.2f) else Color(0xFFFF3366).copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366))
+                        ) {
+                            Text(
+                                text = String.format(Locale.US, "%.1f%%", profitPercent),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
-                    Text(
-                        text = String.format(Locale.US, "%.1f%%", profitPercent),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black,
-                        color = if (marginPerSellingUnit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
-                    )
                 }
 
                 // Purchase Unit
@@ -419,9 +434,9 @@ fun EditProductDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(decorFitsSystemWindows = false),
         modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars).imePadding(),
-        title = { Text("Edit Produk", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
+        title = { Text("EDIT PRODUK", fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp, color = MaterialTheme.colorScheme.onSurface) },
         containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(24.dp),
         text = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -490,43 +505,55 @@ fun EditProductDialog(
                     }
                 }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            color = if (marginPerSellingUnit >= 0) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
-                            shape = RoundedCornerShape(12.dp)
-                        )
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.12f) else Color(0xFFFF3366).copy(alpha = 0.12f),
+                    border = BorderStroke(1.dp, if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.45f) else Color(0xFFFF3366).copy(alpha = 0.45f)),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column {
-                        Text(
-                            text = "Untung per $selectedSellingUnit",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (marginPerSellingUnit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
-                        )
-                        Text(
-                            text = currencyFormatter.format(marginPerSellingUnit).replace("Rp", "Rp "),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = if (marginPerSellingUnit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
-                        )
-                        if (contentQty > 1) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
                             Text(
-                                text = "Modal: ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")} / $selectedSellingUnit",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.Gray
+                                text = "ESTIMASI LABA PER $selectedSellingUnit",
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.6.sp,
+                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366)
+                            )
+                            Text(
+                                text = currencyFormatter.format(marginPerSellingUnit).replace("Rp", "Rp "),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366)
+                            )
+                            if (contentQty > 1) {
+                                Text(
+                                    text = "Modal: ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")} / $selectedSellingUnit",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF94A3B8)
+                                )
+                            }
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.2f) else Color(0xFFFF3366).copy(alpha = 0.2f),
+                            border = BorderStroke(1.dp, if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366))
+                        ) {
+                            Text(
+                                text = String.format(Locale.US, "%.1f%%", profitPercent),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black,
+                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             )
                         }
                     }
-                    Text(
-                        text = String.format(Locale.US, "%.1f%%", profitPercent),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Black,
-                        color = if (marginPerSellingUnit >= 0) Color(0xFF2E7D32) else Color(0xFFC62828)
-                    )
                 }
 
                 // Purchase Unit

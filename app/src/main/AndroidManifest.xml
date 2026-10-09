@@ -65,6 +65,26 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".widget.QuickKulakanActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.MyApplication.Dialog"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".widget.QuickPlanActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance"
+            android:theme="@style/Theme.MyApplication.Dialog"
+            android:windowSoftInputMode="adjustResize" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.aistudio.ecotobacco.kfzqw.fileprovider"
@@ -74,6 +94,19 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <receiver
+            android:name=".widget.TobaccoAppWidgetProvider"
+            android:exported="true"
+            android:label="@string/widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.aistudio.ecotobacco.ACTION_REFRESH_WIDGET" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/tobacco_widget_info" />
+        </receiver>
     </application>
 
 </manifest>

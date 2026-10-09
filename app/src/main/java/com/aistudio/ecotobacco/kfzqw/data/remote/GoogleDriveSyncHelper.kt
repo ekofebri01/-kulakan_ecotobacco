@@ -112,6 +112,22 @@ class GoogleDriveSyncHelper(private val context: Context) {
     val isConnected: Boolean get() = authState.isAuthorized
     val userEmail: String? get() = sharedPrefs.getString("user_email", null)
     val userGoogleSub: String? get() = sharedPrefs.getString("user_google_sub", null)
+    val isLocalUserConnected: Boolean get() = !userEmail.isNullOrBlank()
+
+    fun setLocalUserSession(email: String) {
+        sharedPrefs.edit {
+            putString("user_email", email)
+            putString("user_google_sub", email)
+        }
+    }
+
+    fun clearLocalUserSession() {
+        sharedPrefs.edit {
+            remove("user_email")
+            remove("user_google_sub")
+            remove("auth_state")
+        }
+    }
     val isOnline: Boolean get() {
         val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = connectivityManager.activeNetwork ?: return false

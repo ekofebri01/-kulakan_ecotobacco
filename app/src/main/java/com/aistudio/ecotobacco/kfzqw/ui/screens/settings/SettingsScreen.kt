@@ -35,6 +35,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import androidx.compose.material.icons.filled.Widgets
+import com.aistudio.ecotobacco.kfzqw.widget.TobaccoAppWidgetProvider
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudOff
@@ -129,6 +133,14 @@ fun SettingsScreen(
     val firestoreMessage by viewModel.firestoreMessage.collectAsState()
 
     var isAutoSync by remember { mutableStateOf(viewModel.syncHelper.isAutoSyncEnabled) }
+    val autoBackupInfo by viewModel.autoBackupInfo.collectAsState()
+    var showRestoreAutoBackupDialog by remember { mutableStateOf(false) }
+    var isManualBackupInProgress by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        viewModel.loadAutoBackupInfo(context)
+    }
+
     var showResetDialog by remember { mutableStateOf(false) }
     var showDisconnectDialog by remember { mutableStateOf(false) }
     var showWhatsNew by remember { mutableStateOf(false) }
@@ -210,7 +222,7 @@ fun SettingsScreen(
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(modifier = Modifier.padding(20.dp)) {
-                        val isConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null)
+                        val isConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null) || viewModel.syncHelper.isLocalUserConnected
                         val accountTitle = if (isConnected) {
                             viewModel.syncHelper.userEmail ?: firebaseUser?.displayName ?: firebaseUser?.email ?: "Akun Terhubung"
                         } else "Belum Terhubung ke Cloud"
@@ -472,13 +484,161 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SECTION 4: DATA LOKAL ---
-            PremiumSettingSection(title = "Local Data Management") {
+            // --- SECTION 4: DATA LOKAL & CADANGAN OTOMATIS ---
+            PremiumSettingSection(title = "Local Data Management & Auto Backup") {
+                // Card 1: Status Cadangan Otomatis Internal
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(18.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(42.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Save,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                }
+                                Column {
+                                    Text(
+                                        text = "Cadangan Otomatis",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "Penyimpanan Aman Internal",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "Aktif Otomatis",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+
+                        // Detail Box
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                val lastTimeFormatted = autoBackupInfo?.lastBackupTime?.takeIf { it > 0 }?.let {
+                                    SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(it))
+                                } ?: "Belum pernah dicadangkan"
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Terakhir Dicadangkan:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(lastTimeFormatted, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Text("Ukuran File:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(autoBackupInfo?.fileSizeFormatted ?: "0 B", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                }
+                                if ((autoBackupInfo?.productCount ?: 0) > 0 || (autoBackupInfo?.transactionCount ?: 0) > 0 || (autoBackupInfo?.planCount ?: 0) > 0) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Isi Data:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(
+                                            "${autoBackupInfo?.productCount ?: 0} Produk • ${autoBackupInfo?.transactionCount ?: 0} Transaksi",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            OutlinedButtonPremium(
+                                text = if (isManualBackupInProgress) "Menyimpan..." else "Cadangkan Sekarang",
+                                icon = Icons.Default.Save,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    isManualBackupInProgress = true
+                                    viewModel.performManualAutoBackup(context) { success, msg ->
+                                        isManualBackupInProgress = false
+                                        Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                            val hasBackup = (autoBackupInfo?.lastBackupTime ?: 0L) > 0L
+                            OutlinedButtonPremium(
+                                text = "Pulihkan Auto Backup",
+                                icon = Icons.Default.Download,
+                                modifier = Modifier.weight(1f),
+                                onClick = {
+                                    if (hasBackup) {
+                                        showRestoreAutoBackupDialog = true
+                                    } else {
+                                        Toast.makeText(context, "Belum ada file cadangan otomatis untuk dipulihkan", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(Modifier.height(10.dp))
+
                 PremiumCardGroup {
                     PremiumSettingItem(
-                        title = "Local Backup",
-                        subtitle = "Simpan cadangan .json ke folder pilihan Anda",
-                        icon = Icons.Default.Save,
+                        title = "Ekspor File Cadangan (.json)",
+                        subtitle = "Simpan berkas cadangan ke folder Downloads atau Drive eksternal",
+                        icon = Icons.Default.Upload,
                         onClick = { 
                             val fileName = "eco_tobacco_backup_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}.json"
                             createBackupLauncher.launch(fileName)
@@ -486,10 +646,35 @@ fun SettingsScreen(
                     )
                     HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     PremiumSettingItem(
-                        title = "Local Restore",
-                        subtitle = "Pulihkan data dari file .json",
+                        title = "Impor File Cadangan (.json)",
+                        subtitle = "Buka dan pulihkan data dari file .json eksternal",
                         icon = Icons.Default.UploadFile,
                         onClick = { restoreLauncher.launch(arrayOf("application/json", "*/*")) }
+                    )
+                }
+            }
+
+            // --- SECTION: WIDGET LAYAR UTAMA ---
+            PremiumSettingSection(title = "Widget Layar Utama") {
+                PremiumCardGroup {
+                    PremiumSettingItem(
+                        title = "Pasang Widget ke Layar Utama",
+                        subtitle = "Pantau stok, transaksi & rencana langsung dari home screen",
+                        icon = Icons.Default.Widgets,
+                        onClick = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                val appWidgetManager = context.getSystemService(AppWidgetManager::class.java)
+                                val myProvider = ComponentName(context, TobaccoAppWidgetProvider::class.java)
+                                if (appWidgetManager != null && appWidgetManager.isRequestPinAppWidgetSupported) {
+                                    appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                                    Toast.makeText(context, "Membuka permintaan pasang widget...", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Tekan lama area kosong layar utama HP Anda > pilih Widget > Eco Tobacco", Toast.LENGTH_LONG).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "Tekan lama area kosong layar utama HP Anda > pilih Widget > Eco Tobacco", Toast.LENGTH_LONG).show()
+                            }
+                        }
                     )
                 }
             }
@@ -723,6 +908,41 @@ fun SettingsScreen(
                     (context as? Activity)?.runOnUiThread { Toast.makeText(context, status, Toast.LENGTH_SHORT).show() }
                 }
             }
+        )
+    }
+
+    if (showRestoreAutoBackupDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestoreAutoBackupDialog = false },
+            icon = { Icon(Icons.Default.CloudSync, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+            title = { Text("Pulihkan dari Cadangan Otomatis?", fontWeight = FontWeight.Bold) },
+            text = {
+                val timeStr = autoBackupInfo?.lastBackupTime?.takeIf { it > 0 }?.let {
+                    SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(it))
+                } ?: "Terbaru"
+                Text(
+                    "Aplikasi akan memulihkan data dari cadangan otomatis internal ($timeStr). Data yang ada akan diperbarui secara aman tanpa menghapus riwayat transaksi.\n\nLanjutkan pemulihan?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRestoreAutoBackupDialog = false
+                        viewModel.restoreFromAutoBackup(context) { success, msg ->
+                            Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                        }
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Ya, Pulihkan")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreAutoBackupDialog = false }) {
+                    Text("Batal")
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
         )
     }
 }

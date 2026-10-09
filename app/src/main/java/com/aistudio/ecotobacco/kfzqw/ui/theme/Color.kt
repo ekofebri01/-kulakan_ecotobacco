@@ -2,10 +2,30 @@ package com.aistudio.ecotobacco.kfzqw.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
+// Futuristic Cyber & Neo-Modern Palette
+val CyberBg = Color(0xFF090D16)
+val CyberBgElevated = Color(0xFF0F172A)
+val CyberSurface = Color(0xFF111A2E)
+val CyberCard = Color(0xFF142038)
+val CyberCardElevated = Color(0xFF1A2A48)
+val CyberBorder = Color(0xFF1E2D4A)
+val CyberBorderGlow = Color(0xFF00F0FF)
+
+val CyberCyan = Color(0xFF00F0FF)
+val CyberNeonGreen = Color(0xFF00FF87)
+val CyberEmerald = Color(0xFF10B981)
+val CyberSky = Color(0xFF38BDF8)
+val CyberViolet = Color(0xFF8B5CF6)
+val CyberAmber = Color(0xFFF59E0B)
+val CyberRose = Color(0xFFFF3366)
+val CyberTextBright = Color(0xFFF8FAFC)
+val CyberTextMuted = Color(0xFF94A3B8)
+val CyberTextDim = Color(0xFF64748B)
+
 // Modern Professional Palette
-val PrimaryModern = Color(0xFF0F172A) // Deep Slate
+val PrimaryModern = CyberCyan
 val SecondaryModern = Color(0xFF334155) // Slate
-val AccentModern = Color(0xFF10B981) // Emerald Green
+val AccentModern = CyberNeonGreen
 
 val BackgroundModern = Color(0xFFF8FAFC) // Very Light Gray/Blue
 val SurfaceModern = Color(0xFFFFFFFF) // White

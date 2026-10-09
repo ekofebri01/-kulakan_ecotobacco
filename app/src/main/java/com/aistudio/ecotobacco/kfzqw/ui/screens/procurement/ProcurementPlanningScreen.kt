@@ -17,13 +17,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -39,6 +44,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementItemEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementPlanWithItems
 import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModel
@@ -53,6 +59,8 @@ fun ProcurementPlanningScreen(
     val plans by viewModel.procurementPlans.collectAsStateWithLifecycle()
     var showAddEditDialog by remember { mutableStateOf(false) }
     var planToEdit by remember { mutableStateOf<ProcurementPlanWithItems?>(null) }
+    var planToDelete by remember { mutableStateOf<ProcurementPlanWithItems?>(null) }
+    var itemToRemoveFromPlan by remember { mutableStateOf<ProcurementItemEntity?>(null) }
     
     // Gunakan ID untuk melacak plan yang sedang dibuka agar datanya selalu sinkron (real-time)
     var selectedPlanId by remember { mutableStateOf<Int?>(null) }
@@ -115,12 +123,43 @@ fun ProcurementPlanningScreen(
                         planWithItems = planWithItems,
                         onClick = { selectedPlanId = planWithItems.plan.id },
                         onEdit = { planToEdit = planWithItems; showAddEditDialog = true },
-                        onDelete = { viewModel.deleteProcurementPlan(planWithItems.plan) }
+                        onDelete = { planToDelete = planWithItems }
                     )
                 }
                 item { Spacer(modifier = Modifier.height(80.dp)) }
             }
         }
+    }
+
+    // Confirmation Dialog for Procurement Plan Deletion
+    planToDelete?.let { p ->
+        AlertDialog(
+            onDismissRequest = { planToDelete = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Hapus Rencana Kulakan?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Apakah Anda yakin ingin menghapus rencana kulakan ke \"${p.plan.supplierName.ifBlank { "Tanpa Supplier" }}\" " +
+                    "yang berisi ${p.items.size} item barang? Data rencana ini akan dihapus permanen."
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.deleteProcurementPlan(p.plan)
+                        planToDelete = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hapus", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { planToDelete = null }) {
+                    Text("Batal")
+                }
+            }
+        )
     }
 
     if (showAddEditDialog) {
@@ -143,7 +182,7 @@ fun ProcurementPlanningScreen(
             viewModel = viewModel,
             onDismiss = { selectedPlanId = null },
             onToggle = { viewModel.toggleProcurementItemStatus(it) },
-            onRemoveItem = { viewModel.removeItemFromPlan(it) },
+            onRemoveItem = { itemToRemoveFromPlan = it },
             onShare = { planToShare, exportType, note ->
                 val shareText = generateShareText(planToShare, exportType, note)
                 val sendIntent = Intent().apply {
@@ -156,6 +195,34 @@ fun ProcurementPlanningScreen(
             },
             onShareImage = { planToShare ->
                 sharePlanAsImage(context, planToShare)
+            }
+        )
+    }
+
+    // Confirmation Dialog for Item Deletion from Plan
+    itemToRemoveFromPlan?.let { item ->
+        AlertDialog(
+            onDismissRequest = { itemToRemoveFromPlan = null },
+            icon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Hapus Barang dari Rencana?", fontWeight = FontWeight.Bold) },
+            text = {
+                Text("Apakah Anda yakin ingin menghapus barang \"${item.productName}\" dari rencana kulakan ini?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.removeItemFromPlan(item)
+                        itemToRemoveFromPlan = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Hapus", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { itemToRemoveFromPlan = null }) {
+                    Text("Batal")
+                }
             }
         )
     }

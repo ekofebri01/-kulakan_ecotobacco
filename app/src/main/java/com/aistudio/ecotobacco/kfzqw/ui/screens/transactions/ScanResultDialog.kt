@@ -23,15 +23,19 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -74,9 +78,8 @@ import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
 import kotlinx.coroutines.launch
 
-// Helper data class for stable state
 private data class ScannedItemState(
-    val id: Int, // Stable ID based on initial index
+    val id: Int,
     val item: LocalScanner.ScannedItem,
     val isSelected: Boolean
 )
@@ -91,32 +94,32 @@ fun ScanResultDialog(
     onConfirm: (List<LocalScanner.ScannedItem>, String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    // Local state for shop info
     var editableShopName by remember { mutableStateOf(scannedResult.shopName ?: "") }
 
-    // Local state for items with stable IDs and selection status
-    var itemStates by remember { 
-        mutableStateOf(scannedResult.items.mapIndexed { index, item -> 
-            ScannedItemState(id = index, item = item, isSelected = true) 
-        }) 
+    var itemStates by remember {
+        mutableStateOf(scannedResult.items.mapIndexed { index, item ->
+            ScannedItemState(id = index, item = item, isSelected = true)
+        })
     }
     var nextId by remember { mutableIntStateOf(scannedResult.items.size) }
     var editingId by remember { mutableIntStateOf(-1) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
 
+    val emeraldGreen = Color(0xFF10B981)
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false // Allow dialog to handle IME properly
+            decorFitsSystemWindows = false
         )
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxSize()
                 .systemBarsPadding()
-                .padding(16.dp)
+                .padding(12.dp)
                 .imePadding(),
             shape = RoundedCornerShape(28.dp),
             color = MaterialTheme.colorScheme.surface,
@@ -124,70 +127,132 @@ fun ScanResultDialog(
         ) {
             Column(
                 modifier = Modifier
-                    .padding(horizontal = 24.dp, vertical = 20.dp)
+                    .padding(horizontal = 20.dp, vertical = 20.dp)
                     .fillMaxSize()
             ) {
-                // Title matching screenshot with icon and bold text
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.AutoMirrored.Filled.ReceiptLong, 
-                        contentDescription = null, 
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Spacer(Modifier.width(12.dp))
-                    Text(
-                        "Hasil Scan Nota", 
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.ExtraBold
-                    )
-                }
-                
-                Spacer(Modifier.height(16.dp))
-                
-                // Editable Shop Info
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                // Header with Badge
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        OutlinedTextField(
-                            value = editableShopName,
-                            onValueChange = { editableShopName = it },
-                            label = { Text("Nama Supplier / Toko") },
-                            modifier = Modifier.fillMaxWidth(),
-                            textStyle = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent,
-                            ),
-                            singleLine = true
-                        )
-                        if (!scannedResult.shopAddress.isNullOrBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ReceiptLong,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.width(12.dp))
+                        Column {
                             Text(
-                                text = scannedResult.shopAddress,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                                "Hasil Ekstraksi Nota",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Black
                             )
+                            Text(
+                                "${itemStates.size} Barang terdeteksi",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    // Confidence Pill
+                    if (scannedResult.overallConfidence > 0) {
+                        Surface(
+                            color = emeraldGreen.copy(alpha = 0.15f),
+                            shape = CircleShape,
+                            border = BorderStroke(1.dp, emeraldGreen.copy(alpha = 0.4f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, null, tint = emeraldGreen, modifier = Modifier.size(12.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    "${scannedResult.overallConfidence}% Akurat",
+                                    color = emeraldGreen,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp
+                                )
+                            }
                         }
                     }
                 }
 
+                Spacer(Modifier.height(16.dp))
+
+                // Editable Shop Info Card
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                    shape = RoundedCornerShape(16.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Store,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp).padding(start = 4.dp)
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            OutlinedTextField(
+                                value = editableShopName,
+                                onValueChange = { editableShopName = it },
+                                label = { Text("Nama Supplier / Toko") },
+                                modifier = Modifier.fillMaxWidth(),
+                                textStyle = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedContainerColor = Color.Transparent,
+                                    unfocusedContainerColor = Color.Transparent,
+                                ),
+                                singleLine = true
+                            )
+                            if (!scannedResult.shopAddress.isNullOrBlank()) {
+                                Text(
+                                    text = scannedResult.shopAddress,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Sub-header & Add Item CTA
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        "Pilih & sesuaikan item jika diperlukan:",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        "Daftar Barang Nota:",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
-                    
+
                     OutlinedButton(
                         onClick = {
                             val id = nextId
@@ -199,25 +264,24 @@ fun ScanResultDialog(
                             itemStates = itemStates + newItem
                             editingId = id
                             nextId++
-                            
-                            // Scroll to the new item at the bottom
+
                             scope.launch {
                                 listState.animateScrollToItem(itemStates.size)
                             }
                         },
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(12.dp),
                         modifier = Modifier.height(36.dp)
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(Modifier.width(4.dp))
-                        Text("Tambah", style = MaterialTheme.typography.labelLarge)
+                        Text("Tambah Item", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
                     }
                 }
-                
-                Spacer(Modifier.height(16.dp))
 
-                // LazyColumn with weight(1f) to ensure it takes available space and scrolls correctly
+                Spacer(Modifier.height(12.dp))
+
+                // Item List
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.weight(1f).fillMaxWidth(),
@@ -266,20 +330,28 @@ fun ScanResultDialog(
                             content = {
                                 Card(
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface
+                                        containerColor = if (isSelected)
+                                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.12f)
+                                        else
+                                            MaterialTheme.colorScheme.surface
                                     ),
                                     shape = RoundedCornerShape(16.dp),
-                                    border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant
+                                    ),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     if (isEditing) {
-                                        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                            // Searchable Product Name
+                                        Column(
+                                            modifier = Modifier.padding(16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
                                             var searchQuery by remember { mutableStateOf(item.name) }
                                             val suggestions = remember(searchQuery) {
                                                 if (searchQuery.length >= 2) {
-                                                    productMasterList.filter { 
-                                                        it.name.contains(searchQuery, ignoreCase = true) 
+                                                    productMasterList.filter {
+                                                        it.name.contains(searchQuery, ignoreCase = true)
                                                     }.take(5)
                                                 } else emptyList()
                                             }
@@ -298,17 +370,16 @@ fun ScanResultDialog(
                                                     shape = RoundedCornerShape(12.dp),
                                                     trailingIcon = { Icon(Icons.Default.Search, null) }
                                                 )
-                                                
-                                                // Product Suggestions - Fixed to be scrollable and limited height
+
                                                 AnimatedVisibility(visible = suggestions.isNotEmpty()) {
                                                     Surface(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .heightIn(max = 200.dp),
+                                                            .heightIn(max = 180.dp),
                                                         shape = RoundedCornerShape(12.dp),
                                                         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
-                                                        tonalElevation = 2.dp
+                                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.95f),
+                                                        tonalElevation = 4.dp
                                                     ) {
                                                         Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                                                             suggestions.forEach { product ->
@@ -325,12 +396,12 @@ fun ScanResultDialog(
                                                                         itemStates = newList
                                                                     },
                                                                     headlineContent = { Text(product.name, fontWeight = FontWeight.Bold) },
-                                                                    trailingContent = { 
+                                                                    trailingContent = {
                                                                         Text(
                                                                             "Rp %,.0f".format(product.price),
                                                                             color = MaterialTheme.colorScheme.primary,
                                                                             fontWeight = FontWeight.Bold
-                                                                        ) 
+                                                                        )
                                                                     },
                                                                     colors = ListItemDefaults.colors(containerColor = Color.Transparent)
                                                                 )
@@ -341,8 +412,10 @@ fun ScanResultDialog(
                                             }
 
                                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                var qtyText by remember { mutableStateOf(if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString().replace(".", ",")) }
-                                                
+                                                var qtyText by remember {
+                                                    mutableStateOf(if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString().replace(".", ","))
+                                                }
+
                                                 OutlinedTextField(
                                                     value = qtyText,
                                                     onValueChange = { newQty ->
@@ -374,14 +447,16 @@ fun ScanResultDialog(
                                             Button(
                                                 onClick = { editingId = -1 },
                                                 modifier = Modifier.align(Alignment.End),
-                                                shape = RoundedCornerShape(8.dp)
+                                                shape = RoundedCornerShape(10.dp)
                                             ) {
+                                                Icon(Icons.Default.Check, null, modifier = Modifier.size(16.dp))
+                                                Spacer(Modifier.width(4.dp))
                                                 Text("Selesai")
                                             }
                                         }
                                     } else {
                                         ListItem(
-                                            modifier = Modifier.clickable { 
+                                            modifier = Modifier.clickable {
                                                 val newList = itemStates.toMutableList()
                                                 newList[index] = state.copy(isSelected = !isSelected)
                                                 itemStates = newList
@@ -398,8 +473,19 @@ fun ScanResultDialog(
                                                     colors = CheckboxDefaults.colors(checkedColor = MaterialTheme.colorScheme.primary)
                                                 )
                                             },
-                                            headlineContent = { Text(item.name, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
-                                            supportingContent = { Text("${item.quantity} x Rp %,.0f".format(item.price), color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                                            headlineContent = {
+                                                Text(
+                                                    item.name.ifBlank { "(Barang Tanpa Nama)" },
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (item.name.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
+                                                )
+                                            },
+                                            supportingContent = {
+                                                Text(
+                                                    "${item.quantity} x Rp %,.0f".format(item.price),
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            },
                                             trailingContent = {
                                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                                     Text(
@@ -409,7 +495,12 @@ fun ScanResultDialog(
                                                         fontSize = 14.sp
                                                     )
                                                     IconButton(onClick = { editingId = state.id }) {
-                                                        Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.primary)
+                                                        Icon(
+                                                            Icons.Default.Edit,
+                                                            contentDescription = "Edit",
+                                                            modifier = Modifier.size(18.dp),
+                                                            tint = MaterialTheme.colorScheme.primary
+                                                        )
                                                     }
                                                 }
                                             }
@@ -421,9 +512,9 @@ fun ScanResultDialog(
                     }
                 }
 
-                // Footer with total and buttons
+                // Total Summary & Action Buttons Footer
                 val totalSelected = itemStates.filter { it.isSelected }.sumOf { it.item.quantity * it.item.price }
-                
+
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -432,21 +523,26 @@ fun ScanResultDialog(
                     if (showDebugOption) {
                         OutlinedButton(
                             onClick = onShowDebug,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                             shape = RoundedCornerShape(12.dp)
                         ) {
-                            Text("Lihat Log Debug")
+                            Text("Lihat Log Debug Scan")
                         }
                     }
+
                     HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
-                            Text("Total Terpilih", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                "Total (${itemStates.count { it.isSelected }} Terpilih)",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             Text(
                                 "Rp %,.0f".format(totalSelected),
                                 style = MaterialTheme.typography.titleLarge,
@@ -454,21 +550,23 @@ fun ScanResultDialog(
                                 color = MaterialTheme.colorScheme.primary
                             )
                         }
-                        
+
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             TextButton(onClick = onDismiss) {
                                 Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                             Spacer(Modifier.width(8.dp))
                             Button(
-                                onClick = { 
+                                onClick = {
                                     val selected = itemStates.filter { it.isSelected }.map { it.item }
                                     onConfirm(selected, editableShopName)
                                 },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)), // Execution Green
-                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = emeraldGreen),
+                                shape = RoundedCornerShape(14.dp),
                                 modifier = Modifier.height(48.dp)
                             ) {
+                                Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(6.dp))
                                 Text("Simpan Transaksi", fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }

@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,9 +36,6 @@ import androidx.core.content.edit
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.room.Room
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 import com.aistudio.ecotobacco.kfzqw.data.local.AppDatabase
 import com.aistudio.ecotobacco.kfzqw.data.repository.TobaccoRepository
 import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
@@ -54,69 +52,12 @@ import com.aistudio.ecotobacco.kfzqw.ui.screens.transactions.TransactionEntryScr
 import com.aistudio.ecotobacco.kfzqw.ui.theme.MyApplicationTheme
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModel
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModelFactory
+import com.aistudio.ecotobacco.kfzqw.widget.TobaccoAppWidgetProvider
 
 class MainActivity : ComponentActivity() {
 
-    // --- Migrations ---
-    private val migration1to2 = object : Migration(1, 2) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("CREATE TABLE IF NOT EXISTS `transactions_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `date` INTEGER NOT NULL, `productName` TEXT NOT NULL, `quantity` REAL NOT NULL, `unitPrice` REAL NOT NULL, `total` REAL NOT NULL)")
-            db.execSQL("INSERT INTO `transactions_new` (`id`, `date`, `productName`, `quantity`, `unitPrice`, `total`) SELECT `id`, `date`, `productName`, CAST(`quantity` AS REAL), `unitPrice`, `total` FROM `transactions`")
-            db.execSQL("DROP TABLE `transactions`")
-            db.execSQL("ALTER TABLE `transactions_new` RENAME TO `transactions`")
-        }
-    }
-    private val migration2to3 = object : Migration(2, 3) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `transactions` ADD COLUMN `isDeleted` INTEGER NOT NULL DEFAULT 0")
-        }
-    }
-    private val migration4to5 = object : Migration(4, 5) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `transactions` ADD COLUMN `supplier` TEXT NOT NULL DEFAULT ''")
-        }
-    }
-    private val migration5to6 = object : Migration(5, 6) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("CREATE TABLE IF NOT EXISTS `categories` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL)")
-        }
-    }
-    private val migration6to7 = object : Migration(6, 7) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `transactions` ADD COLUMN `unit` TEXT NOT NULL DEFAULT 'kg'")
-            
-            // Fix procurement_plans table (remove createdAt and isCompleted)
-            db.execSQL("CREATE TABLE IF NOT EXISTS `procurement_plans_new` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `date` INTEGER NOT NULL, `supplierName` TEXT NOT NULL)")
-            db.execSQL("INSERT INTO `procurement_plans_new` (`id`, `date`, `supplierName`) SELECT `id`, `date`, `supplierName` FROM `procurement_plans`")
-            db.execSQL("DROP TABLE `procurement_plans`")
-            db.execSQL("ALTER TABLE `procurement_plans_new` RENAME TO `procurement_plans`")
-        }
-    }
-    private val migration7to8 = object : Migration(7, 8) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `products` ADD COLUMN `unit` TEXT NOT NULL DEFAULT 'kg'")
-            db.execSQL("ALTER TABLE `procurement_items` ADD COLUMN `unit` TEXT NOT NULL DEFAULT 'kg'")
-        }
-    }
-    private val migration8to9 = object : Migration(8, 9) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `products` ADD COLUMN `sellingPrice` REAL NOT NULL DEFAULT 0.0")
-            db.execSQL("ALTER TABLE `products` ADD COLUMN `sellingUnit` TEXT NOT NULL DEFAULT 'pcs'")
-        }
-    }
-    private val migration9to10 = object : Migration(9, 10) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE `products` ADD COLUMN `contentQuantity` REAL NOT NULL DEFAULT 1.0")
-        }
-    }
-
     // --- Database & ViewModel Setup ---
-    private val db by lazy {
-        Room.databaseBuilder(applicationContext, AppDatabase::class.java, "eco_tobacco_database")
-            .addMigrations(migration1to2, migration2to3, migration4to5, migration5to6, migration6to7, migration7to8, migration8to9, migration9to10)
-            .fallbackToDestructiveMigration(dropAllTables = false)
-            .build()
-    }
+    private val db by lazy { AppDatabase.getInstance(applicationContext) }
 
     private val repository by lazy {
         TobaccoRepository(
@@ -130,9 +71,13 @@ class MainActivity : ComponentActivity() {
         TobaccoViewModelFactory(repository, application)
     }
 
+    private var pendingNavRoute by mutableStateOf<String?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        pendingNavRoute = intent.getStringExtra(TobaccoAppWidgetProvider.EXTRA_NAVIGATE_TO)
 
         setContent {
             val themeMode by viewModel.themeMode.collectAsState()
@@ -197,16 +142,31 @@ class MainActivity : ComponentActivity() {
                                 showWhatsNew = false
                             })
                         }
-                        TobaccoApp(viewModel)
+                        TobaccoApp(
+                            viewModel = viewModel,
+                            initialRoute = pendingNavRoute,
+                            onNavRouteConsumed = { pendingNavRoute = null }
+                        )
                     }
                 }
             }
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        TobaccoAppWidgetProvider.notifyDataChanged(this)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+
+        val navRoute = intent.getStringExtra(TobaccoAppWidgetProvider.EXTRA_NAVIGATE_TO)
+        if (!navRoute.isNullOrBlank()) {
+            pendingNavRoute = navRoute
+        }
+
         intent.data?.let { uri ->
             if (uri.scheme?.startsWith("com.googleusercontent.apps") == true || uri.host == "ecotobacco-kfzqw.com") {
                 viewModel.handleOAuthRedirect(intent) { success, msg ->
@@ -237,15 +197,16 @@ fun WhatsNewDialog(currentVersion: String, onDismiss: () -> Unit) {
             LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 item {
                     Text("Info Aplikasi:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Text("Aplikasi manajemen stok dan kulakan tembakau pintar dengan fitur sinkronisasi Cloud.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Aplikasi manajemen stok dan kulakan tembakau pintar dengan fitur sinkronisasi Cloud & Home Screen Widget.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 item { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) }
-                item { Text("Fitur & Pembaruan Terbaru:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) }
-                item { WhatsNewItem("🔐", "Autentikasi Google Cloud", "Login Google resmi dengan penanganan fallback browser & Credential Manager.") }
-                item { WhatsNewItem("⚡", "Masuk Cepat Cloud", "Hubungkan data ke Cloud Firestore instan dalam 1 klik (Mode Tamu / Instan).") }
-                item { WhatsNewItem("📊", "Indikator Progress Real-time", "Pelacakan kemajuan bertahap (0%-100%) saat sinkronisasi stok & transaksi.") }
-                item { WhatsNewItem("🎨", "Personalisasi UI v4.1", "Kartu kontrol modern dengan value badge dan tombol reset bawaan.") }
-                item { WhatsNewItem("☁️", "Sinkronisasi Google Drive", "Cadangkan dan pulihkan data Anda kapan saja dengan aman.") }
+                item { Text("Fitur & Pembaruan Terbaru v4.2:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) }
+                item { WhatsNewItem("⚡", "Isian Widget Tanpa Buka App", "Akses '+ Input Kulakan' & 'Bikin Rencana' langsung dari widget tanpa berpindah dari Home Screen.") }
+                item { WhatsNewItem("📋", "Rencana Kulakan Multi-Produk", "Buat rencana kulakan cepat untuk beberapa jenis produk sekaligus dalam satu target supplier/lokasi.") }
+                item { WhatsNewItem("🔍", "Live Preview Produk & Supplier", "Pratinjau otomatis katalog, harga acuan beli/jual, dan riwayat supplier secara realtime saat mengetik.") }
+                item { WhatsNewItem("🔄", "Restorasi Backup Fleksibel", "Sistem pemulihan cadangan cerdas non-destruktif yang mendukung JSON, array, sinonim, hingga CSV.") }
+                item { WhatsNewItem("🛡️", "Konfirmasi Hapus Seluruh App", "Perlindungan data dengan dialog konfirmasi saat menghapus transaksi, draf, produk, atau reset database.") }
+                item { WhatsNewItem("📱", "Home Screen Widget Real-time", "Pantau total transaksi kulakan bulanan, stok, dan rencana aktif langsung dari layar utama HP.") }
             }
         },
         confirmButton = {
@@ -270,8 +231,20 @@ fun WhatsNewItem(icon: String, title: String, description: String) {
 }
 
 @Composable
-fun TobaccoApp(viewModel: TobaccoViewModel) {
+fun TobaccoApp(
+    viewModel: TobaccoViewModel,
+    initialRoute: String? = null,
+    onNavRouteConsumed: () -> Unit = {}
+) {
     val navController = rememberNavController()
+
+    LaunchedEffect(initialRoute) {
+        if (!initialRoute.isNullOrBlank() && initialRoute != Routes.HOME) {
+            navController.navigate(initialRoute)
+            onNavRouteConsumed()
+        }
+    }
+
     NavHost(navController = navController, startDestination = Routes.HOME) {
         composable(Routes.HOME) {
             HomeScreen(
@@ -330,10 +303,7 @@ fun TobaccoApp(viewModel: TobaccoViewModel) {
             ReceiptScannerScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onScanComplete = { result ->
-                    navController.previousBackStackEntry?.savedStateHandle?.set(
-                        "scanned_result",
-                        result
-                    )
+                    navController.previousBackStackEntry?.savedStateHandle?.set("scanned_result", result)
                     navController.popBackStack()
                 }
             )

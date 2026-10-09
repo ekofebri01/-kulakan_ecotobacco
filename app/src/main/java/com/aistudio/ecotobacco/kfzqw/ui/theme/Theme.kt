@@ -26,15 +26,17 @@ fun MyApplicationTheme(
     val colorScheme = if (darkTheme) {
         darkColorScheme(
             primary = primaryColor,
-            onPrimary = Color.Black,
+            onPrimary = Color(0xFF090D16),
             primaryContainer = primaryColor.copy(alpha = 0.2f),
             onPrimaryContainer = primaryColor,
-            background = Color(0xFF0F172A),
-            surface = Color(0xFF1E293B),
-            surfaceVariant = Color(0xFF334155),
-            onSurface = if (uiConfig.customTextColor != 0) Color(uiConfig.customTextColor) else Color.White,
-            onBackground = if (uiConfig.customTextColor != 0) Color(uiConfig.customTextColor) else Color.White,
-            outline = Color(0xFF475569)
+            background = CyberBg,
+            surface = CyberSurface,
+            surfaceVariant = CyberCard,
+            onSurface = if (uiConfig.customTextColor != 0) Color(uiConfig.customTextColor) else CyberTextBright,
+            onBackground = if (uiConfig.customTextColor != 0) Color(uiConfig.customTextColor) else CyberTextBright,
+            onSurfaceVariant = CyberTextMuted,
+            outline = CyberBorder,
+            outlineVariant = CyberCardElevated
         )
     } else {
         lightColorScheme(
