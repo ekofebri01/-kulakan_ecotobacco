@@ -139,9 +139,10 @@ class TobaccoAppWidgetProvider : AppWidgetProvider() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             // Android 12+ responsive multi-size layout mapping
             val viewMapping = mapOf(
-                SizeF(90f, 40f) to buildRemoteViewsForLayout(context, R.layout.widget_tobacco_tiny, data),
-                SizeF(160f, 40f) to buildRemoteViewsForLayout(context, R.layout.widget_tobacco_compact, data),
-                SizeF(220f, 95f) to buildRemoteViewsForLayout(context, R.layout.widget_tobacco_dashboard, data)
+                SizeF(70f, 60f) to buildRemoteViewsForLayout(context, R.layout.widget_tobacco_tiny, data),
+                SizeF(110f, 40f) to buildRemoteViewsForLayout(context, R.layout.widget_tobacco_compact, data),
+                SizeF(110f, 90f) to buildRemoteViewsForLayout(context, R.layout.widget_tobacco_medium, data),
+                SizeF(200f, 90f) to buildRemoteViewsForLayout(context, R.layout.widget_tobacco_dashboard, data)
             )
             RemoteViews(viewMapping)
         } else {
@@ -150,8 +151,9 @@ class TobaccoAppWidgetProvider : AppWidgetProvider() {
             val minWidth = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH) ?: 0
             val minHeight = options?.getInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT) ?: 0
             val layoutId = when {
-                minHeight in 1..85 && minWidth in 1..180 -> R.layout.widget_tobacco_tiny
-                minHeight in 1..85 -> R.layout.widget_tobacco_compact
+                minHeight < 80 && minWidth < 110 -> R.layout.widget_tobacco_tiny
+                minHeight < 80 -> R.layout.widget_tobacco_compact
+                minWidth < 200 || minHeight < 140 -> R.layout.widget_tobacco_medium
                 else -> R.layout.widget_tobacco_dashboard
             }
             buildRemoteViewsForLayout(context, layoutId, data)
@@ -171,8 +173,12 @@ class TobaccoAppWidgetProvider : AppWidgetProvider() {
 
         val views = RemoteViews(context.packageName, layoutId)
 
-        // 1. Month Badge
-        val monthFormat = SimpleDateFormat("MMMM yyyy", Locale("id", "ID"))
+        // 1. Month Badge (Compact format for small/medium to prevent wrapping)
+        val monthFormat = if (layoutId == R.layout.widget_tobacco_dashboard) {
+            SimpleDateFormat("MMMM yyyy", Locale("id", "ID"))
+        } else {
+            SimpleDateFormat("MMM yyyy", Locale("id", "ID"))
+        }
         views.setTextViewText(R.id.widget_tv_month_badge, monthFormat.format(Date()))
 
         // Button Action 1: + Input Kulakan (QuickKulakanActivity floating dialog)
@@ -238,19 +244,31 @@ class TobaccoAppWidgetProvider : AppWidgetProvider() {
 
             views.setTextViewText(
                 R.id.widget_tv_kulakan_stats,
-                if (layoutId == R.layout.widget_tobacco_tiny) {
-                    "${data.totalKulakanCount} Trx • ${formatDecimal(data.totalKulakanQty)} kg"
-                } else {
-                    "${data.totalKulakanCount} Transaksi Kulakan • ${formatDecimal(data.totalKulakanQty)} kg"
+                when (layoutId) {
+                    R.layout.widget_tobacco_dashboard -> {
+                        "${data.totalKulakanCount} Transaksi Kulakan • ${formatDecimal(data.totalKulakanQty)} kg"
+                    }
+                    R.layout.widget_tobacco_tiny -> {
+                        "${data.totalKulakanCount} Trx"
+                    }
+                    R.layout.widget_tobacco_compact -> {
+                        "• ${data.totalKulakanCount} Trx"
+                    }
+                    else -> {
+                        "${data.totalKulakanCount} Trx • ${formatDecimal(data.totalKulakanQty)} kg"
+                    }
                 }
             )
 
             views.setTextViewText(R.id.widget_tv_active_plans, "${data.activePlansCount} Rencana")
             views.setTextViewText(
                 R.id.widget_tv_plan_items,
-                if (data.pendingItemsCount > 0) "${data.pendingItemsCount} Item Belum Beli" else "Semua Sudah Dibeli"
+                if (data.pendingItemsCount > 0) "${data.pendingItemsCount} Item Belum Beli" else "Semua Terbeli"
             )
-            views.setTextViewText(R.id.widget_tv_total_products, "${data.totalProductsCount} Jenis Produk")
+            views.setTextViewText(
+                R.id.widget_tv_total_products,
+                if (layoutId == R.layout.widget_tobacco_dashboard) "${data.totalProductsCount} Jenis Produk" else "${data.totalProductsCount} Produk"
+            )
 
             if (data.lastUpdateTime != null) {
                 views.setTextViewText(R.id.widget_tv_last_update, data.lastUpdateTime)

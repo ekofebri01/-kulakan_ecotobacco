@@ -594,6 +594,22 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
+                                if (!autoBackupInfo?.filePath.isNullOrBlank()) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("Lokasi Berkas:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                        Text(
+                                            autoBackupInfo?.filePath ?: "",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(start = 8.dp)
+                                        )
+                                    }
+                                }
                             }
                         }
 

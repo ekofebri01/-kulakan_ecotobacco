@@ -8,6 +8,7 @@ data class SyncDataBundle(
     val products: List<ProductSyncModel>,
     val lastUpdated: Long,
     val deletedTransactions: List<String>? = null,
+    val deletedProducts: List<String>? = null,
     val procurementPlans: List<ProcurementPlanSyncModel>? = null,
     val appSettings: AppSettingsSyncModel? = null,
     val categories: List<String>? = null
@@ -28,6 +29,7 @@ data class AppSettingsSyncModel(
     val themeMode: String = "SYSTEM",
     val customColor: Int = 0xFF10B981.toInt(),
     val customUnits: List<String> = listOf("kg", "ons", "pcs"),
+    val customSubCategories: List<String> = listOf("Tembakau", "Alat", "Papir", "Kemasan", "Umum"),
     val fontSizeScale: Float = 1.0f,
     val paddingScale: Float = 1.0f,
     val buttonHeight: Int = 56,

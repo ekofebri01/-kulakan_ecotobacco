@@ -1,312 +1,37 @@
 package com.aistudio.ecotobacco.kfzqw
 
-import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.activity.viewModels
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.core.content.edit
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.rememberNavController
-import com.aistudio.ecotobacco.kfzqw.data.local.AppDatabase
-import com.aistudio.ecotobacco.kfzqw.data.repository.TobaccoRepository
-import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
-import com.aistudio.ecotobacco.kfzqw.ui.Routes
-import com.aistudio.ecotobacco.kfzqw.ui.screens.debug.DebugMenuScreen
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.aistudio.ecotobacco.kfzqw.ui.screens.home.HomeScreen
-import com.aistudio.ecotobacco.kfzqw.ui.screens.procurement.ProcurementPlanningScreen
-import com.aistudio.ecotobacco.kfzqw.ui.screens.products.ProductMasterScreen
-import com.aistudio.ecotobacco.kfzqw.ui.screens.reports.ReportsScreen
-import com.aistudio.ecotobacco.kfzqw.ui.screens.scanner.ReceiptScannerScreen
-import com.aistudio.ecotobacco.kfzqw.ui.screens.settings.SettingsScreen
-import com.aistudio.ecotobacco.kfzqw.ui.screens.splash.SplashScreen
-import com.aistudio.ecotobacco.kfzqw.ui.screens.transactions.TransactionEntryScreen
-import com.aistudio.ecotobacco.kfzqw.ui.theme.MyApplicationTheme
-import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModel
-import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModelFactory
-import com.aistudio.ecotobacco.kfzqw.widget.TobaccoAppWidgetProvider
+import com.aistudio.ecotobacco.kfzqw.ui.theme.EcoTobaccoTheme
 
 class MainActivity : ComponentActivity() {
-
-    // --- Database & ViewModel Setup ---
-    private val db by lazy { AppDatabase.getInstance(applicationContext) }
-
-    private val repository by lazy {
-        TobaccoRepository(
-            db.productDao(),
-            db.transactionDao(),
-            db.procurementDao()
-        )
-    }
-
-    private val viewModel: TobaccoViewModel by viewModels {
-        TobaccoViewModelFactory(repository, application)
-    }
-
-    private var pendingNavRoute by mutableStateOf<String?>(null)
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        pendingNavRoute = intent.getStringExtra(TobaccoAppWidgetProvider.EXTRA_NAVIGATE_TO)
+        
+        // Fullscreen immersive setup / Hide system bars or enable edge-to-edge
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val windowInsetsController = WindowInsetsControllerCompat(window, window.decorView)
+        windowInsetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        windowInsetsController.hide(WindowInsetsCompat.Type.navigationBars())
 
         setContent {
-            val themeMode by viewModel.themeMode.collectAsState()
-            val customColor by viewModel.customColor.collectAsState()
-            val fontSizeScale by viewModel.fontSizeScale.collectAsState()
-            val paddingScale by viewModel.paddingScale.collectAsState()
-            val buttonHeight by viewModel.buttonHeight.collectAsState()
-            val cornerRadius by viewModel.cornerRadius.collectAsState()
-            val customTextColor by viewModel.customTextColor.collectAsState()
-
-            val uiConfig = com.aistudio.ecotobacco.kfzqw.ui.theme.UiConfig(
-                fontSizeScale = fontSizeScale,
-                paddingScale = paddingScale,
-                buttonHeight = buttonHeight,
-                cornerRadius = cornerRadius,
-                customTextColor = customTextColor
-            )
-
-            val appInitProgress by viewModel.appInitProgress.collectAsState()
-            val initStatusText by viewModel.initStatusText.collectAsState()
-            val isAppReady by viewModel.isAppReady.collectAsState()
-
-            var showSplash by remember { mutableStateOf(true) }
-
-            MyApplicationTheme(
-                themeMode = themeMode, 
-                customColor = customColor,
-                uiConfig = uiConfig
-            ) {
-                if (showSplash || !isAppReady) {
-                    SplashScreen(
-                        progress = appInitProgress,
-                        statusText = initStatusText,
-                        onFinished = { showSplash = false }
-                    )
-                } else {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        val context = LocalContext.current
-                        val sharedPref =
-                            remember { context.getSharedPreferences("app_prefs", MODE_PRIVATE) }
-                        val currentVersion = Routes.APP_VERSION
-                        var showWhatsNew by remember {
-                            mutableStateOf(
-                                !sharedPref.getBoolean(
-                                    "has_seen_whats_new_v$currentVersion",
-                                    false
-                                )
-                            )
-                        }
-
-                        if (showWhatsNew) {
-                            WhatsNewDialog(currentVersion = currentVersion, onDismiss = {
-                                sharedPref.edit {
-                                    putBoolean(
-                                        "has_seen_whats_new_v$currentVersion",
-                                        true
-                                    )
-                                }
-                                showWhatsNew = false
-                            })
-                        }
-                        TobaccoApp(
-                            viewModel = viewModel,
-                            initialRoute = pendingNavRoute,
-                            onNavRouteConsumed = { pendingNavRoute = null }
-                        )
-                    }
+            EcoTobaccoTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    HomeScreen()
                 }
             }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        TobaccoAppWidgetProvider.notifyDataChanged(this)
-    }
-
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
-
-        val navRoute = intent.getStringExtra(TobaccoAppWidgetProvider.EXTRA_NAVIGATE_TO)
-        if (!navRoute.isNullOrBlank()) {
-            pendingNavRoute = navRoute
-        }
-
-        intent.data?.let { uri ->
-            if (uri.scheme?.startsWith("com.googleusercontent.apps") == true || uri.host == "ecotobacco-kfzqw.com") {
-                viewModel.handleOAuthRedirect(intent) { success, msg ->
-                    runOnUiThread {
-                        android.widget.Toast.makeText(this, msg ?: if (success) "Login Google Berhasil" else "Login gagal", android.widget.Toast.LENGTH_SHORT).show()
-                        if (success) {
-                            viewModel.syncData()
-                            viewModel.syncFirestore()
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun WhatsNewDialog(currentVersion: String, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Column {
-                Text("Tentang Aplikasi", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text("ECO TOBACCO v$currentVersion", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            }
-        },
-        text = {
-            LazyColumn(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                item {
-                    Text("Info Aplikasi:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Text("Aplikasi manajemen stok dan kulakan tembakau pintar dengan fitur sinkronisasi Cloud & Home Screen Widget.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                item { HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant) }
-                item { Text("Fitur & Pembaruan Terbaru v4.2:", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) }
-                item { WhatsNewItem("⚡", "Isian Widget Tanpa Buka App", "Akses '+ Input Kulakan' & 'Bikin Rencana' langsung dari widget tanpa berpindah dari Home Screen.") }
-                item { WhatsNewItem("📋", "Rencana Kulakan Multi-Produk", "Buat rencana kulakan cepat untuk beberapa jenis produk sekaligus dalam satu target supplier/lokasi.") }
-                item { WhatsNewItem("🔍", "Live Preview Produk & Supplier", "Pratinjau otomatis katalog, harga acuan beli/jual, dan riwayat supplier secara realtime saat mengetik.") }
-                item { WhatsNewItem("🔄", "Restorasi Backup Fleksibel", "Sistem pemulihan cadangan cerdas non-destruktif yang mendukung JSON, array, sinonim, hingga CSV.") }
-                item { WhatsNewItem("🛡️", "Konfirmasi Hapus Seluruh App", "Perlindungan data dengan dialog konfirmasi saat menghapus transaksi, draf, produk, atau reset database.") }
-                item { WhatsNewItem("📱", "Home Screen Widget Real-time", "Pantau total transaksi kulakan bulanan, stok, dan rencana aktif langsung dari layar utama HP.") }
-            }
-        },
-        confirmButton = {
-            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary), shape = RoundedCornerShape(12.dp)) {
-                Text("Mulai Sekarang")
-            }
-        },
-        shape = RoundedCornerShape(28.dp),
-        containerColor = MaterialTheme.colorScheme.surface
-    )
-}
-
-@Composable
-fun WhatsNewItem(icon: String, title: String, description: String) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(text = icon, fontSize = 20.sp)
-        Column {
-            Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-            Text(text = description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-fun TobaccoApp(
-    viewModel: TobaccoViewModel,
-    initialRoute: String? = null,
-    onNavRouteConsumed: () -> Unit = {}
-) {
-    val navController = rememberNavController()
-
-    LaunchedEffect(initialRoute) {
-        if (!initialRoute.isNullOrBlank() && initialRoute != Routes.HOME) {
-            navController.navigate(initialRoute)
-            onNavRouteConsumed()
-        }
-    }
-
-    NavHost(navController = navController, startDestination = Routes.HOME) {
-        composable(Routes.HOME) {
-            HomeScreen(
-                viewModel,
-                { navController.navigate(Routes.TRANSACTION_ENTRY) },
-                { navController.navigate(Routes.PRODUCT_MASTER) },
-                { navController.navigate(Routes.REPORTS) },
-                { navController.navigate(Routes.REPORTS_THIS_MONTH) },
-                { navController.navigate(Routes.SETTINGS) },
-                { navController.navigate(Routes.DEBUG_MENU) },
-                { navController.navigate(Routes.PROCUREMENT_PLANNING) })
-        }
-        composable(Routes.TRANSACTION_ENTRY) { backStackEntry ->
-            val result = backStackEntry.savedStateHandle.get<LocalScanner.ScannedResult>("scanned_result")
-            TransactionEntryScreen(
-                viewModel,
-                scannedResult = result,
-                onNavigateToScanner = { navController.navigate(Routes.RECEIPT_SCANNER) },
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-        composable(Routes.PRODUCT_MASTER) {
-            ProductMasterScreen(
-                viewModel,
-                { navController.popBackStack() })
-        }
-        composable(Routes.REPORTS) {
-            ReportsScreen(
-                viewModel, { navController.navigate(Routes.TRANSACTION_ENTRY) },
-                { navController.navigate(Routes.SETTINGS) })
-        }
-        composable(Routes.REPORTS_THIS_MONTH) {
-            ReportsScreen(
-                viewModel,
-                { navController.navigate(Routes.TRANSACTION_ENTRY) },
-                { navController.navigate(Routes.SETTINGS) },
-                initialFilterBy = "Bulanan"
-            )
-        }
-        composable(Routes.PROCUREMENT_PLANNING) { backStackEntry ->
-            val result = backStackEntry.savedStateHandle.get<LocalScanner.ScannedResult>("scanned_result")
-            ProcurementPlanningScreen(
-                viewModel,
-                scannedResult = result,
-                onNavigateBack = { navController.popBackStack() }
-            )
-        }
-        composable(Routes.SETTINGS) {
-            SettingsScreen(
-                viewModel,
-                { navController.popBackStack() },
-                { navController.navigate(Routes.DEBUG_MENU) })
-        }
-        composable(Routes.DEBUG_MENU) { DebugMenuScreen(viewModel) { navController.popBackStack() } }
-        composable(Routes.RECEIPT_SCANNER) {
-            ReceiptScannerScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onScanComplete = { result ->
-                    navController.previousBackStackEntry?.savedStateHandle?.set("scanned_result", result)
-                    navController.popBackStack()
-                }
-            )
         }
     }
 }

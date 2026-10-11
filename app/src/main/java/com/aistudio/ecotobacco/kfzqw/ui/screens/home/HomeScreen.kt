@@ -128,6 +128,10 @@ fun HomeScreen(
     val prodCount by viewModel.productCount.collectAsStateWithLifecycle()
     val products by viewModel.products.collectAsStateWithLifecycle()
     val unitOptions by viewModel.customUnits.collectAsStateWithLifecycle()
+    val customSubCategories by viewModel.customSubCategories.collectAsStateWithLifecycle()
+    val subCategoryOptions = remember(customSubCategories, products) {
+        (products.map { it.subCategory } + customSubCategories).filter { it.isNotBlank() }.distinct().sorted()
+    }
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
 
     val firebaseUser by viewModel.firebaseUser.collectAsStateWithLifecycle()
@@ -700,12 +704,14 @@ fun HomeScreen(
         EditProductDialog(
             product = productToEdit!!,
             unitOptions = unitOptions,
+            subCategoryOptions = subCategoryOptions,
             onAddCustomUnit = { viewModel.addCustomUnit(it) },
             onUpdateCustomUnit = { old, new -> viewModel.updateCustomUnit(old, new) },
             onDeleteCustomUnit = { viewModel.deleteCustomUnit(it) },
+            onAddCustomSubCategory = { viewModel.addCustomSubCategory(it) },
             onDismiss = { productToEdit = null },
-            onConfirm = { name, price, unit, sellingPrice, sellingUnit, contentQuantity ->
-                viewModel.updateProduct(productToEdit!!.id, name, price, unit, sellingPrice, sellingUnit, contentQuantity)
+            onConfirm = { name, price, unit, sellingPrice, sellingUnit, contentQuantity, category, subCategory ->
+                viewModel.updateProduct(productToEdit!!.id, name, price, unit, sellingPrice, sellingUnit, contentQuantity, category, subCategory)
                 productToEdit = null
             }
         )

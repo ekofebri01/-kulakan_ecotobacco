@@ -6,9 +6,9 @@
     android:background="@drawable/widget_background"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="6dp">
+    android:padding="5dp">
 
-    <!-- Mini Header Icon & Total -->
+    <!-- Mini Header: Icon + Brand + Refresh (Clickable) -->
     <LinearLayout
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
@@ -17,18 +17,19 @@
         android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="18dp"
-            android:layout_height="18dp"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
             android:contentDescription="@string/app_name"
             android:src="@drawable/ic_widget_inventory" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
+            android:layout_marginStart="3dp"
+            android:singleLine="true"
             android:text="ECO"
             android:textColor="#F59E0B"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
 
         <FrameLayout
@@ -38,117 +39,131 @@
 
         <ImageView
             android:id="@+id/btn_widget_refresh"
-            android:layout_width="22dp"
-            android:layout_height="22dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
             android:background="@drawable/widget_btn_bg"
             android:contentDescription="Segarkan"
-            android:padding="3dp"
+            android:padding="2dp"
             android:src="@drawable/ic_widget_refresh" />
     </LinearLayout>
 
-    <!-- Mini Card Total Kulakan -->
+    <!-- Mini Card Total Kulakan (Clickable to Reports) -->
     <LinearLayout
         android:id="@+id/card_widget_hero"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="4dp"
+        android:layout_marginTop="3dp"
+        android:layout_marginBottom="3dp"
         android:layout_weight="1"
         android:background="@drawable/widget_hero_card_bg"
         android:gravity="center"
         android:orientation="vertical"
-        android:padding="5dp">
+        android:paddingHorizontal="4dp"
+        android:paddingVertical="3dp">
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:singleLine="true"
             android:text="KULAKAN"
             android:textColor="#34D399"
-            android:textSize="9sp"
+            android:textSize="8sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_tv_total_kulakan_amount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:maxLines="1"
+            android:singleLine="true"
             android:text="Rp 0"
             android:textColor="#FFFFFF"
-            android:textSize="14sp"
+            android:textSize="13sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_tv_kulakan_stats"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:layout_marginTop="1dp"
             android:ellipsize="end"
             android:maxLines="1"
+            android:singleLine="true"
             android:text="0 Trx"
             android:textColor="#CBD5E1"
-            android:textSize="9sp" />
+            android:textSize="8sp" />
     </LinearLayout>
 
-    <!-- Mini Action Button -->
+    <!-- Mini Action Buttons: +Input and +Plan -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="4dp"
+        android:layout_height="22dp"
         android:orientation="horizontal">
 
         <LinearLayout
             android:id="@+id/btn_widget_input_kulakan"
             android:layout_width="0dp"
-            android:layout_height="26dp"
-            android:layout_marginEnd="3dp"
+            android:layout_height="match_parent"
+            android:layout_marginEnd="2dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_kulakan_bg"
             android:gravity="center"
-            android:paddingHorizontal="4dp">
+            android:paddingHorizontal="2dp">
 
             <ImageView
-                android:layout_width="12dp"
-                android:layout_height="12dp"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
                 android:contentDescription="Input"
                 android:src="@drawable/ic_widget_add" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:text="Kulakan"
+                android:layout_marginStart="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="+Input"
                 android:textColor="#064E3B"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
         <LinearLayout
             android:id="@+id/btn_widget_bikin_rencana"
             android:layout_width="0dp"
-            android:layout_height="26dp"
-            android:layout_marginStart="3dp"
+            android:layout_height="match_parent"
+            android:layout_marginStart="2dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_plan_bg"
             android:gravity="center"
-            android:paddingHorizontal="4dp">
+            android:paddingHorizontal="2dp">
 
             <ImageView
-                android:layout_width="12dp"
-                android:layout_height="12dp"
-                android:contentDescription="Rencana"
+                android:layout_width="10dp"
+                android:layout_height="10dp"
+                android:contentDescription="Plan"
                 android:src="@drawable/ic_widget_plan" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:text="Rencana"
+                android:layout_marginStart="2dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="+Plan"
                 android:textColor="#FFFFFF"
-                android:textSize="10sp"
+                android:textSize="9sp"
                 android:textStyle="bold" />
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Compatibility hidden IDs -->
+    <!-- Hidden compatibility IDs -->
     <TextView
         android:id="@+id/widget_tv_month_badge"
         android:layout_width="0dp"
@@ -186,5 +201,4 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content" />
     </LinearLayout>
-
 </LinearLayout>

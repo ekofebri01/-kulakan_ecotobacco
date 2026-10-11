@@ -2,6 +2,7 @@ package com.aistudio.ecotobacco.kfzqw.ui.screens.products
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -60,16 +61,20 @@ import java.util.Locale
 @Composable
 fun AddProductDialog(
     unitOptions: List<String>,
+    subCategoryOptions: List<String> = emptyList(),
     onAddCustomUnit: (String) -> Unit,
     onUpdateCustomUnit: (String, String) -> Unit,
     onDeleteCustomUnit: (String) -> Unit,
+    onAddCustomSubCategory: (String) -> Unit = {},
     onDismiss: () -> Unit, 
-    onAdd: (String, Double, String, Double, String, Double) -> Unit
+    onAdd: (String, Double, String, Double, String, Double, String, String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var priceStr by remember { mutableStateOf("") }
     var sellingPriceStr by remember { mutableStateOf("") }
     var contentQtyStr by remember { mutableStateOf("1") }
+    var subCategory by remember { mutableStateOf("Tembakau") }
+    var category by remember { mutableStateOf("") }
 
     var selectedUnit by remember { mutableStateOf("kg") }
     var selectedSellingUnit by remember { mutableStateOf("pcs") }
@@ -103,6 +108,51 @@ fun AddProductDialog(
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
                 )
+
+                OutlinedTextField(
+                    value = subCategory,
+                    onValueChange = { subCategory = it },
+                    label = { Text("Sub Kategori (Contoh: Tembakau, Alat, Papir, dll)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary),
+                    supportingText = { Text("Misal: Tembakau, Tembakau Kemasan, Alat, Papir, dll.") }
+                )
+
+                if (subCategoryOptions.isNotEmpty()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Sub Kategori Tersimpan:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            subCategoryOptions.forEach { option ->
+                                val isSelected = subCategory.equals(option, ignoreCase = true)
+                                Surface(
+                                    onClick = { subCategory = option },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                ) {
+                                    Text(
+                                        text = option,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -369,7 +419,12 @@ fun AddProductDialog(
                             } else "unit"
                         } else selectedSellingUnit
 
-                        onAdd(name, price, finalUnit, sellingPrice, finalSellingUnit, contentQty)
+                        val finalSubCat = subCategory.trim().ifBlank { "Umum" }
+                        if (finalSubCat.isNotBlank() && finalSubCat != "Umum") {
+                            onAddCustomSubCategory(finalSubCat)
+                        }
+
+                        onAdd(name, price, finalUnit, sellingPrice, finalSellingUnit, contentQty, category, finalSubCat)
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
@@ -401,17 +456,21 @@ fun AddProductDialog(
 fun EditProductDialog(
     product: ProductEntity,
     unitOptions: List<String>,
+    subCategoryOptions: List<String> = emptyList(),
     onAddCustomUnit: (String) -> Unit,
     onUpdateCustomUnit: (String, String) -> Unit,
     onDeleteCustomUnit: (String) -> Unit,
+    onAddCustomSubCategory: (String) -> Unit = {},
     onDismiss: () -> Unit,
-    onConfirm: (String, Double, String, Double, String, Double) -> Unit,
+    onConfirm: (String, Double, String, Double, String, Double, String, String) -> Unit,
     onDelete: (() -> Unit)? = null
 ) {
     var name by remember { mutableStateOf(product.name) }
     var priceStr by remember { mutableStateOf(product.price.toString().replace(".0", "")) }
     var sellingPriceStr by remember { mutableStateOf(product.sellingPrice.toString().replace(".0", "")) }
     var contentQtyStr by remember { mutableStateOf(product.contentQuantity.toString().replace(".0", "")) }
+    var subCategory by remember { mutableStateOf(product.subCategory.ifBlank { "Tembakau" }) }
+    var category by remember { mutableStateOf(product.category) }
 
     var selectedUnit by remember {
         mutableStateOf(if (product.unit in unitOptions) product.unit else "Custom")
@@ -453,6 +512,51 @@ fun EditProductDialog(
                     shape = RoundedCornerShape(12.dp),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
                 )
+
+                OutlinedTextField(
+                    value = subCategory,
+                    onValueChange = { subCategory = it },
+                    label = { Text("Sub Kategori (Contoh: Tembakau, Alat, Papir, dll)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary),
+                    supportingText = { Text("Misal: Tembakau, Tembakau Kemasan, Alat, Papir, dll.") }
+                )
+
+                if (subCategoryOptions.isNotEmpty()) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "Sub Kategori Tersimpan:",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 4.dp)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            subCategoryOptions.forEach { option ->
+                                val isSelected = subCategory.equals(option, ignoreCase = true)
+                                Surface(
+                                    onClick = { subCategory = option },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                ) {
+                                    Text(
+                                        text = option,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -744,7 +848,12 @@ fun EditProductDialog(
                                 } else "unit"
                             } else selectedSellingUnit
 
-                            onConfirm(name, price, finalUnit, sellingPrice, finalSellingUnit, contentQty)
+                            val finalSubCat = subCategory.trim().ifBlank { "Umum" }
+                            if (finalSubCat.isNotBlank() && finalSubCat != "Umum") {
+                                onAddCustomSubCategory(finalSubCat)
+                            }
+
+                            onConfirm(name, price, finalUnit, sellingPrice, finalSellingUnit, contentQty, category, finalSubCat)
                         }
                     },
                     modifier = Modifier.height(44.dp).weight(1.7f),

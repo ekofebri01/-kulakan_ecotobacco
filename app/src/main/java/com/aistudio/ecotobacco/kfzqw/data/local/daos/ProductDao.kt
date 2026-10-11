@@ -1,33 +1,33 @@
 package com.aistudio.ecotobacco.kfzqw.data.local.daos
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import androidx.room.Update
+import androidx.room.*
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
+import com.aistudio.ecotobacco.kfzqw.data.local.entities.SubCategoryEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ProductDao {
-    @Query("SELECT * FROM products ORDER BY name COLLATE NOCASE ASC")
+    @Query("SELECT * FROM products ORDER BY category ASC, name ASC")
     fun getAllProducts(): Flow<List<ProductEntity>>
 
-    @Query("SELECT * FROM products")
-    suspend fun getAllProductsDirect(): List<ProductEntity>
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertProduct(product: ProductEntity)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertProducts(products: List<ProductEntity>)
+    suspend fun insertProduct(product: ProductEntity): Long
 
     @Update
     suspend fun updateProduct(product: ProductEntity)
 
-    @Query("DELETE FROM products WHERE id = :id")
-    suspend fun deleteProductById(id: Int)
+    @Delete
+    suspend fun deleteProduct(product: ProductEntity)
 
-    @Query("DELETE FROM products")
-    suspend fun deleteAllProducts()
+    @Query("SELECT * FROM sub_categories ORDER BY category ASC, name ASC")
+    fun getAllSubCategories(): Flow<List<SubCategoryEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSubCategory(subCategory: SubCategoryEntity): Long
+
+    @Delete
+    suspend fun deleteSubCategory(subCategory: SubCategoryEntity)
+
+    @Update
+    suspend fun updateSubCategory(subCategory: SubCategoryEntity)
 }

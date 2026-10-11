@@ -6,34 +6,36 @@
     android:background="@drawable/widget_background"
     android:gravity="center_vertical"
     android:orientation="horizontal"
-    android:padding="8dp">
+    android:paddingHorizontal="8dp"
+    android:paddingVertical="4dp">
 
-    <!-- Mini Left: App Icon & Brand -->
+    <!-- Mini Left: App Icon & Brand (Clickable to Home) -->
     <LinearLayout
         android:id="@+id/widget_header"
         android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:gravity="center"
-        android:orientation="vertical"
-        android:paddingEnd="8dp">
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingEnd="6dp">
 
         <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
             android:contentDescription="@string/app_name"
             android:src="@drawable/ic_widget_inventory" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginStart="4dp"
+            android:singleLine="true"
             android:text="ECO"
             android:textColor="#F59E0B"
-            android:textSize="10sp"
+            android:textSize="11sp"
             android:textStyle="bold" />
     </LinearLayout>
 
-    <!-- Mini Center: Total Kulakan Bulan Ini -->
+    <!-- Mini Center: Hero Card Kulakan (Clickable to Reports) -->
     <LinearLayout
         android:id="@+id/card_widget_hero"
         android:layout_width="0dp"
@@ -42,46 +44,61 @@
         android:background="@drawable/widget_hero_card_bg"
         android:gravity="center_vertical"
         android:orientation="vertical"
-        android:paddingHorizontal="10dp"
-        android:paddingVertical="4dp">
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="3dp">
 
-        <TextView
-            android:layout_width="wrap_content"
+        <!-- Line 1: Label + Stats in one line -->
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:singleLine="true"
-            android:text="KULAKAN BULAN INI"
-            android:textColor="#34D399"
-            android:textSize="9sp"
-            android:textStyle="bold" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
 
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="KULAKAN"
+                android:textColor="#34D399"
+                android:textSize="8sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_tv_kulakan_stats"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="• 0 Trx"
+                android:textColor="#CBD5E1"
+                android:textSize="8sp" />
+        </LinearLayout>
+
+        <!-- Line 2: Amount (Large & Bold) -->
         <TextView
             android:id="@+id/widget_tv_total_kulakan_amount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
             android:singleLine="true"
             android:text="Rp 0"
             android:textColor="#FFFFFF"
-            android:textSize="16sp"
+            android:textSize="14sp"
             android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/widget_tv_kulakan_stats"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:text="0 Trx • 0 kg"
-            android:textColor="#CBD5E1"
-            android:textSize="10sp" />
     </LinearLayout>
 
-    <!-- Mini Right: 2 Quick Action Buttons Vertical -->
+    <!-- Mini Right: Quick Action Buttons Side-by-Side + Refresh -->
     <LinearLayout
         android:layout_width="wrap_content"
-        android:layout_height="match_parent"
-        android:layout_marginStart="8dp"
-        android:gravity="center"
-        android:orientation="vertical">
+        android:layout_height="wrap_content"
+        android:layout_marginStart="6dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
         <!-- Quick Kulakan -->
         <LinearLayout
@@ -91,21 +108,24 @@
             android:background="@drawable/widget_btn_kulakan_bg"
             android:gravity="center"
             android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
+            android:paddingHorizontal="7dp">
 
             <ImageView
-                android:layout_width="14dp"
-                android:layout_height="14dp"
-                android:contentDescription="Input Kulakan"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:contentDescription="Input"
                 android:src="@drawable/ic_widget_add" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="Kulakan"
+                android:layout_marginStart="3dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="+Input"
                 android:textColor="#064E3B"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -114,30 +134,44 @@
             android:id="@+id/btn_widget_bikin_rencana"
             android:layout_width="wrap_content"
             android:layout_height="28dp"
-            android:layout_marginTop="4dp"
+            android:layout_marginStart="4dp"
             android:background="@drawable/widget_btn_plan_bg"
             android:gravity="center"
             android:orientation="horizontal"
-            android:paddingHorizontal="8dp">
+            android:paddingHorizontal="7dp">
 
             <ImageView
-                android:layout_width="14dp"
-                android:layout_height="14dp"
-                android:contentDescription="Bikin Rencana"
+                android:layout_width="12dp"
+                android:layout_height="12dp"
+                android:contentDescription="Plan"
                 android:src="@drawable/ic_widget_plan" />
 
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:text="Rencana"
+                android:layout_marginStart="3dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="+Plan"
                 android:textColor="#FFFFFF"
-                android:textSize="11sp"
+                android:textSize="10sp"
                 android:textStyle="bold" />
         </LinearLayout>
+
+        <!-- Refresh Button -->
+        <ImageView
+            android:id="@+id/btn_widget_refresh"
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/widget_btn_bg"
+            android:contentDescription="Segarkan"
+            android:padding="4dp"
+            android:src="@drawable/ic_widget_refresh" />
     </LinearLayout>
 
-    <!-- Hidden elements for provider binding compatibility -->
+    <!-- Hidden compatibility IDs -->
     <TextView
         android:id="@+id/widget_tv_month_badge"
         android:layout_width="0dp"
@@ -146,12 +180,6 @@
 
     <TextView
         android:id="@+id/widget_tv_last_update"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:visibility="gone" />
-
-    <ImageView
-        android:id="@+id/btn_widget_refresh"
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:visibility="gone" />

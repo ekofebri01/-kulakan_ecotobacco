@@ -27,6 +27,7 @@ class TobaccoRepository(
     suspend fun deleteAllProducts() = productDao.deleteAllProducts()
 
     suspend fun getAllProductsDirect() = productDao.getAllProductsDirect()
+    suspend fun getProductById(id: Int) = productDao.getProductById(id)
     suspend fun getAllTransactionsDirect() = transactionDao.getAllTransactionsDirect()
     suspend fun getAllProcurementPlansDirect() = procurementDao.getAllPlansWithItemsDirect()
 

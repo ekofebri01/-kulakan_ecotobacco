@@ -94,6 +94,40 @@ class TobaccoViewModel(
     private val _customUnits = MutableStateFlow(appPrefs?.getStringSet("custom_units", setOf("kg", "ons", "pcs"))?.toList()?.sorted() ?: listOf("kg", "ons", "pcs"))
     val customUnits: StateFlow<List<String>> = _customUnits.asStateFlow()
 
+    private val _customSubCategories = MutableStateFlow(
+        appPrefs?.getStringSet("custom_sub_categories", setOf("Tembakau", "Alat", "Papir", "Kemasan", "Umum"))?.toList()?.sorted()
+            ?: listOf("Tembakau", "Alat", "Papir", "Kemasan", "Umum")
+    )
+    val customSubCategories: StateFlow<List<String>> = _customSubCategories.asStateFlow()
+
+    fun addCustomSubCategory(subCat: String) {
+        val current = _customSubCategories.value.toMutableSet()
+        if (current.add(subCat)) {
+            val newList = current.toList().sorted()
+            _customSubCategories.value = newList
+            appPrefs?.edit { putStringSet("custom_sub_categories", current) }
+        }
+    }
+
+    fun updateCustomSubCategory(oldSub: String, newSub: String) {
+        val current = _customSubCategories.value.toMutableSet()
+        if (current.remove(oldSub)) {
+            current.add(newSub)
+            val newList = current.toList().sorted()
+            _customSubCategories.value = newList
+            appPrefs?.edit { putStringSet("custom_sub_categories", current) }
+        }
+    }
+
+    fun deleteCustomSubCategory(subCat: String) {
+        val current = _customSubCategories.value.toMutableSet()
+        if (current.remove(subCat)) {
+            val newList = current.toList().sorted()
+            _customSubCategories.value = newList
+            appPrefs?.edit { putStringSet("custom_sub_categories", current) }
+        }
+    }
+
     // --- UI Customization Settings ---
     private val _fontSizeScale = MutableStateFlow(appPrefs.getFloat("ui_font_size_scale", 1.0f))
     val fontSizeScale = _fontSizeScale.asStateFlow()
@@ -228,7 +262,42 @@ class TobaccoViewModel(
     private val _autoBackupInfo = MutableStateFlow<AutoBackupInfo?>(null)
     val autoBackupInfo: StateFlow<AutoBackupInfo?> = _autoBackupInfo.asStateFlow()
 
+    fun getBackupFileCandidates(context: Context): List<File> {
+        val list = mutableListOf<File>()
+
+        // 1. User-specified folder: /storage/emulated/0/backups/eco_tobacco_sync_data/eco_tobacco_sync_data.json
+        try {
+            val extStorage = Environment.getExternalStorageDirectory()
+            val userFolder = File(extStorage, "backups/eco_tobacco_sync_data")
+            list.add(File(userFolder, "eco_tobacco_sync_data.json"))
+        } catch (e: Exception) { /* ignore */ }
+
+        // 2. Public Documents folder
+        try {
+            val docs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
+            val docFolder = File(docs, "backups/eco_tobacco_sync_data")
+            list.add(File(docFolder, "eco_tobacco_sync_data.json"))
+        } catch (e: Exception) { /* ignore */ }
+
+        // 3. App-specific external files dir
+        try {
+            context.getExternalFilesDir("backups")?.let {
+                list.add(File(it, "eco_tobacco_sync_data.json"))
+            }
+        } catch (e: Exception) { /* ignore */ }
+
+        // 4. App internal files dir (always accessible sandbox)
+        val internalDir = File(context.filesDir, "backups")
+        list.add(File(internalDir, "eco_tobacco_sync_data.json"))
+
+        return list
+    }
+
     fun getBackupFile(context: Context): File {
+        val candidates = getBackupFileCandidates(context)
+        val existing = candidates.firstOrNull { it.exists() && it.length() > 0L }
+        if (existing != null) return existing
+
         val internalDir = File(context.filesDir, "backups")
         if (!internalDir.exists()) internalDir.mkdirs()
         return File(internalDir, "eco_tobacco_sync_data.json")
@@ -236,9 +305,9 @@ class TobaccoViewModel(
 
     fun loadAutoBackupInfo(context: Context) = viewModelScope.launch(Dispatchers.IO) {
         try {
-            val file = getBackupFile(context)
-            val extFile = context.getExternalFilesDir("backups")?.let { File(it, "eco_tobacco_sync_data.json") }
-            val targetFile = if (file.exists() && file.length() > 0L) file else if (extFile != null && extFile.exists() && extFile.length() > 0L) extFile else null
+            val candidates = getBackupFileCandidates(context)
+            val targetFile = candidates.filter { it.exists() && it.length() > 0L }
+                .maxByOrNull { it.lastModified() }
 
             if (targetFile != null && targetFile.exists() && targetFile.length() > 0L) {
                 val sizeBytes = targetFile.length()
@@ -705,6 +774,27 @@ class TobaccoViewModel(
         getApplication<Application>().getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE).edit { putString("deleted_tx_keys_str", currentKeys.joinToString("\n")) }
     }
 
+    private fun getDeletedProductNames(): Set<String> {
+        val prefs = getApplication<Application>().getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
+        return prefs.getString("deleted_product_names_str", "")?.split("\n")?.map { it.trim().lowercase() }?.filter { it.isNotEmpty() }?.toSet() ?: emptySet()
+    }
+
+    private fun addDeletedProductNames(names: Collection<String>) {
+        if (names.isEmpty()) return
+        val current = getDeletedProductNames().toMutableSet()
+        current.addAll(names.map { it.trim().lowercase() }.filter { it.isNotEmpty() })
+        getApplication<Application>().getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
+            .edit { putString("deleted_product_names_str", current.joinToString("\n")) }
+    }
+
+    private fun removeDeletedProductNames(names: Collection<String>) {
+        if (names.isEmpty()) return
+        val current = getDeletedProductNames().toMutableSet()
+        current.removeAll(names.map { it.trim().lowercase() }.toSet())
+        getApplication<Application>().getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
+            .edit { putString("deleted_product_names_str", current.joinToString("\n")) }
+    }
+
     fun notifyWidgetUpdate() {
         com.aistudio.ecotobacco.kfzqw.widget.TobaccoAppWidgetProvider.notifyDataChanged(getApplication())
     }
@@ -785,23 +875,35 @@ class TobaccoViewModel(
         repository.insertCategory(CategoryEntity(name = name))
         triggerAutoSync(forceOverwriteRemote = true)
     }
-    fun addProduct(name: String, price: Double, unit: String = "kg", sellingPrice: Double = 0.0, sellingUnit: String = "pcs", contentQuantity: Double = 1.0) = viewModelScope.launch { 
-        val product = ProductEntity(name = name, price = price, unit = unit, sellingPrice = sellingPrice, sellingUnit = sellingUnit, contentQuantity = contentQuantity)
+    fun addProduct(name: String, price: Double, unit: String = "kg", sellingPrice: Double = 0.0, sellingUnit: String = "pcs", contentQuantity: Double = 1.0, category: String = "", subCategory: String = "Umum") = viewModelScope.launch { 
+        removeDeletedProductNames(listOf(name))
+        val product = ProductEntity(name = name, price = price, unit = unit, sellingPrice = sellingPrice, sellingUnit = sellingUnit, contentQuantity = contentQuantity, category = category, subCategory = subCategory)
         repository.insertProduct(product)
         firebaseAuth.uid?.let { uid ->
             firestoreSync.persistProduct(uid, product)
         }
         triggerAutoSync(forceOverwriteRemote = true) 
     }
-    fun updateProduct(id: Int, name: String, price: Double, unit: String = "kg", sellingPrice: Double = 0.0, sellingUnit: String = "pcs", contentQuantity: Double = 1.0) = viewModelScope.launch { 
-        val product = ProductEntity(id = id, name = name, price = price, unit = unit, sellingPrice = sellingPrice, sellingUnit = sellingUnit, contentQuantity = contentQuantity)
+    fun updateProduct(id: Int, name: String, price: Double, unit: String = "kg", sellingPrice: Double = 0.0, sellingUnit: String = "pcs", contentQuantity: Double = 1.0, category: String = "", subCategory: String = "Umum") = viewModelScope.launch { 
+        removeDeletedProductNames(listOf(name))
+        val product = ProductEntity(id = id, name = name, price = price, unit = unit, sellingPrice = sellingPrice, sellingUnit = sellingUnit, contentQuantity = contentQuantity, category = category, subCategory = subCategory)
         repository.updateProduct(product)
         firebaseAuth.uid?.let { uid ->
             firestoreSync.persistProduct(uid, product)
         }
         triggerAutoSync(forceOverwriteRemote = true) 
     }
-    fun deleteProduct(id: Int) = viewModelScope.launch { repository.deleteProductById(id); triggerAutoSync(forceOverwriteRemote = true) }
+    fun deleteProduct(id: Int) = viewModelScope.launch {
+        val product = repository.getProductById(id)
+        if (product != null) {
+            addDeletedProductNames(listOf(product.name))
+        }
+        repository.deleteProductById(id)
+        firebaseAuth.uid?.let { uid ->
+            firestoreSync.deleteProduct(uid, id)
+        }
+        triggerAutoSync(forceOverwriteRemote = true)
+    }
     fun addTransaction(date: Long, productName: String, quantity: Double, unitPrice: Double, supplier: String = "", unit: String = "kg") = viewModelScope.launch {
         syncProductFromTransaction(productName, unitPrice, unit)
         val tx = TransactionEntity(
@@ -836,14 +938,24 @@ class TobaccoViewModel(
     }
     fun deleteTransaction(id: Int) = viewModelScope.launch {
         val tx = repository.getTransactionById(id)
-        if (tx != null) addDeletedTransactionKey(getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier))
+        if (tx != null) {
+            addDeletedTransactionKey(getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier))
+        }
         repository.deleteTransactionById(id)
+        firebaseAuth.uid?.let { uid ->
+            firestoreSync.deleteTransaction(uid, id)
+        }
         triggerAutoSync(forceOverwriteRemote = true)
     }
     fun deleteTransactions(ids: List<Int>) = viewModelScope.launch {
         ids.forEach { id ->
             val tx = repository.getTransactionById(id)
-            if (tx != null) addDeletedTransactionKey(getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier))
+            if (tx != null) {
+                addDeletedTransactionKey(getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier))
+            }
+            firebaseAuth.uid?.let { uid ->
+                firestoreSync.deleteTransaction(uid, id)
+            }
         }
         repository.deleteTransactionsByIds(ids)
         triggerAutoSync(forceOverwriteRemote = true)
@@ -1013,7 +1125,7 @@ class TobaccoViewModel(
     }
 
     private suspend fun generateBackupJson(): String {
-        val localTransactionsData = repository.getAllTransactionsDirect()
+        val localTransactionsData = repository.getAllTransactionsDirect().filter { it.isDeleted == 0 }
         val localProductsData = repository.getAllProductsDirect()
         val localProcurementData = repository.getAllProcurementPlansDirect()
         val localCategoriesData = repository.getAllCategoriesDirect().map { it.name }
@@ -1031,7 +1143,8 @@ class TobaccoViewModel(
                     it.unitPrice,
                     it.total,
                     it.supplier,
-                    it.unit
+                    it.unit,
+                    isDeleted = false
                 )
             },
             products = localProductsData.map {
@@ -1041,7 +1154,8 @@ class TobaccoViewModel(
                     it.price,
                     it.unit,
                     it.sellingPrice,
-                    it.sellingUnit
+                    it.sellingUnit,
+                    it.contentQuantity
                 )
             },
             procurementPlans = localProcurementData.map { planWithItems ->
@@ -1065,6 +1179,7 @@ class TobaccoViewModel(
                 themeMode = _themeMode.value,
                 customColor = _customColor.value,
                 customUnits = _customUnits.value,
+                customSubCategories = _customSubCategories.value,
                 fontSizeScale = _fontSizeScale.value,
                 paddingScale = _paddingScale.value,
                 buttonHeight = _buttonHeight.value,
@@ -1073,67 +1188,78 @@ class TobaccoViewModel(
             ),
             categories = localCategoriesData,
             lastUpdated = System.currentTimeMillis(),
-            deletedTransactions = getDeletedTransactionKeys().toList()
+            deletedTransactions = getDeletedTransactionKeys().toList(),
+            deletedProducts = getDeletedProductNames().toList()
         )
         
         return adapter.toJson(syncBundle)
     }
 
+    private fun writeJsonToAllBackupLocations(context: Context, jsonData: String) {
+        val fileName = "eco_tobacco_sync_data.json"
+
+        // 1. Internal sandbox (always available)
+        try {
+            val internalBackupDir = File(context.filesDir, "backups")
+            if (!internalBackupDir.exists()) internalBackupDir.mkdirs()
+            File(internalBackupDir, fileName).writeText(jsonData)
+        } catch (e: Exception) {
+            AppLogger.e("Backup", "Internal backup write failed", e)
+        }
+
+        // 2. App-specific external storage
+        try {
+            val appFilesDir = context.getExternalFilesDir("backups")
+            if (appFilesDir != null) {
+                if (!appFilesDir.exists()) appFilesDir.mkdirs()
+                File(appFilesDir, fileName).writeText(jsonData)
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Backup", "External files write notice: ${e.message}")
+        }
+
+        // 3. User requested folder: /storage/emulated/0/backups/eco_tobacco_sync_data/
+        try {
+            val extStorage = Environment.getExternalStorageDirectory()
+            val userTargetDir = File(extStorage, "backups/eco_tobacco_sync_data")
+            if (!userTargetDir.exists()) userTargetDir.mkdirs()
+            if (userTargetDir.exists()) {
+                File(userTargetDir, fileName).writeText(jsonData)
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Backup", "User folder write notice: ${e.message}")
+        }
+
+        // 4. Public Documents folder
+        try {
+            val docDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "backups/eco_tobacco_sync_data")
+            if (!docDir.exists()) docDir.mkdirs()
+            if (docDir.exists()) {
+                File(docDir, fileName).writeText(jsonData)
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Backup", "Documents folder write notice: ${e.message}")
+        }
+    }
+
     fun exportBackupToDevice(context: Context) = viewModelScope.launch(Dispatchers.IO) {
         try {
             val jsonData = generateBackupJson()
-            val fileName = "eco_tobacco_sync_data.json"
-            
-            // 1. Simpan ke internal storage (selalu ada, aman, tidak butuh izin runtime)
-            val internalBackupDir = File(context.filesDir, "backups")
-            if (!internalBackupDir.exists()) {
-                internalBackupDir.mkdirs()
-            }
-            val internalFile = File(internalBackupDir, fileName)
-            internalFile.writeText(jsonData)
-
-            // 2. Simpan cadangan ke external files directory aplikasi jika tersedia
-            try {
-                val appFilesDir = context.getExternalFilesDir("backups")
-                if (appFilesDir != null) {
-                    if (!appFilesDir.exists()) appFilesDir.mkdirs()
-                    val extFile = File(appFilesDir, fileName)
-                    extFile.writeText(jsonData)
-                }
-            } catch (e: Exception) {
-                AppLogger.w("Backup", "External files write skipped: ${e.message}")
-            }
-            
-            AppLogger.d("Backup", "Backup otomatis tersimpan di: ${internalFile.absolutePath} (${internalFile.length()} bytes)")
+            writeJsonToAllBackupLocations(context, jsonData)
             
             context.getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
                 .edit { putLong("last_auto_backup_time", System.currentTimeMillis()) }
 
             loadAutoBackupInfo(context)
         } catch (e: Exception) {
-            AppLogger.e("Backup", "Gagal auto-backup ke internal storage", e)
+            AppLogger.e("Backup", "Gagal auto-backup ke storage", e)
         }
     }
 
     fun performManualAutoBackup(context: Context, onResult: ((Boolean, String) -> Unit)? = null) = viewModelScope.launch(Dispatchers.IO) {
         try {
             val jsonData = generateBackupJson()
-            val fileName = "eco_tobacco_sync_data.json"
-            
-            val internalBackupDir = File(context.filesDir, "backups")
-            if (!internalBackupDir.exists()) internalBackupDir.mkdirs()
-            val internalFile = File(internalBackupDir, fileName)
-            internalFile.writeText(jsonData)
-
-            try {
-                val appFilesDir = context.getExternalFilesDir("backups")
-                if (appFilesDir != null) {
-                    if (!appFilesDir.exists()) appFilesDir.mkdirs()
-                    File(appFilesDir, fileName).writeText(jsonData)
-                }
-            } catch (e: Exception) {
-                // ignore
-            }
+            writeJsonToAllBackupLocations(context, jsonData)
 
             context.getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
                 .edit { putLong("last_auto_backup_time", System.currentTimeMillis()) }
@@ -1474,10 +1600,18 @@ class TobaccoViewModel(
                         unitsList.add(unitsArr.optString(k))
                     }
                 }
+                val subCatList = mutableListOf<String>()
+                val subCatArr = settingsObj.optJSONArray("customSubCategories") ?: settingsObj.optJSONArray("sub_categories") ?: settingsObj.optJSONArray("subkategori")
+                if (subCatArr != null) {
+                    for (k in 0 until subCatArr.length()) {
+                        subCatList.add(subCatArr.optString(k))
+                    }
+                }
                 appSettings = AppSettingsSyncModel(
                     themeMode = settingsObj.optString("themeMode", "SYSTEM"),
                     customColor = settingsObj.optInt("customColor", 0xFF10B981.toInt()),
                     customUnits = if (unitsList.isNotEmpty()) unitsList else listOf("kg", "ons", "pcs"),
+                    customSubCategories = if (subCatList.isNotEmpty()) subCatList else listOf("Tembakau", "Alat", "Papir", "Kemasan", "Umum"),
                     fontSizeScale = parseFlexibleDouble(settingsObj.opt("fontSizeScale"), 1.0).toFloat(),
                     paddingScale = parseFlexibleDouble(settingsObj.opt("paddingScale"), 1.0).toFloat(),
                     buttonHeight = settingsObj.optInt("buttonHeight", 56),
@@ -1596,32 +1730,54 @@ class TobaccoViewModel(
         val localTransactionsData = repository.getAllTransactionsDirect()
         val localProductsData = repository.getAllProductsDirect()
 
-        // Remove tombstone blocks for explicitly restored transactions so they are restored correctly
-        val currentDeleted = getDeletedTransactionKeys().toMutableSet()
-        remoteBundle.transactions.forEach { tx ->
-            val key = getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier ?: "")
-            currentDeleted.remove(key)
-        }
-        val syncPrefs = getApplication<Application>().getSharedPreferences("tobacco_sync_prefs", Context.MODE_PRIVATE)
-        syncPrefs.edit { putString("deleted_tx_keys_str", currentDeleted.joinToString("\n")) }
+        // 1. Process deleted products: combine tombstones and purge any deleted products from local DB
+        val incomingDeletedProducts = (remoteBundle.deletedProducts ?: emptyList()).map { it.trim().lowercase() }
+        val combinedDeletedProducts = (getDeletedProductNames() + incomingDeletedProducts).toSet()
+        addDeletedProductNames(combinedDeletedProducts)
 
-        val mergedTransactions = mergeTransactions(localTransactionsData, remoteBundle.transactions)
-        val mergedProducts = mergeProducts(localProductsData, remoteBundle.products)
+        localProductsData.forEach { p ->
+            if (combinedDeletedProducts.contains(p.name.trim().lowercase())) {
+                repository.deleteProductById(p.id)
+            }
+        }
+
+        // 2. Process deleted transactions: combine tombstones and purge any deleted transactions from local DB
+        val incomingDeletedTx = (remoteBundle.deletedTransactions ?: emptyList()).toSet()
+        val combinedDeletedTx = (getDeletedTransactionKeys() + incomingDeletedTx).toSet()
+        addDeletedTransactionKeys(combinedDeletedTx)
+
+        localTransactionsData.forEach { tx ->
+            val key = getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier ?: "")
+            if (combinedDeletedTx.contains(key)) {
+                repository.deleteTransactionById(tx.id)
+            }
+        }
+
+        // 3. Filter incoming products: only ones that have NOT been deleted
+        val activeIncomingProducts = remoteBundle.products.filter { p ->
+            !combinedDeletedProducts.contains(p.name.trim().lowercase())
+        }
+        // If restoring a backup with explicit products, un-tombstone them
+        removeDeletedProductNames(activeIncomingProducts.map { it.name.trim().lowercase() })
+
+        // 4. Filter incoming transactions: only active ones
+        val activeIncomingTx = remoteBundle.transactions.filter { tx ->
+            val key = getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier ?: "")
+            !combinedDeletedTx.contains(key) && tx.isDeleted != true
+        }
+
+        // 5. Merge active products & active transactions
+        val currentLocalProducts = repository.getAllProductsDirect()
+        val currentLocalTx = repository.getAllTransactionsDirect().filter { it.isDeleted == 0 }
+
+        val mergedTransactions = mergeTransactions(currentLocalTx, activeIncomingTx)
+        val mergedProducts = mergeProducts(currentLocalProducts, activeIncomingProducts)
 
         if (mergedTransactions.inserted.isNotEmpty()) {
             repository.insertTransactions(mergedTransactions.inserted)
         }
         if (mergedProducts.inserted.isNotEmpty()) {
             repository.insertProducts(mergedProducts.inserted)
-        }
-
-        // Also auto-sync products from transactions if not present
-        remoteBundle.transactions.forEach { tx ->
-            val exists = localProductsData.any { it.name.trim().equals(tx.productName.trim(), ignoreCase = true) } ||
-                         mergedProducts.inserted.any { it.name.trim().equals(tx.productName.trim(), ignoreCase = true) }
-            if (!exists) {
-                repository.insertProduct(ProductEntity(name = tx.productName.trim(), price = tx.unitPrice, unit = tx.unit ?: "kg"))
-            }
         }
 
         // Restore Categories
@@ -1668,6 +1824,10 @@ class TobaccoViewModel(
             val unitSet = settings.customUnits.toSet()
             _customUnits.value = settings.customUnits.sorted()
             appPrefs?.edit { putStringSet("custom_units", unitSet) }
+
+            val subCatSet = settings.customSubCategories.toSet()
+            _customSubCategories.value = settings.customSubCategories.sorted()
+            appPrefs?.edit { putStringSet("custom_sub_categories", subCatSet) }
         }
 
         val totalTxRestored = mergedTransactions.inserted.size

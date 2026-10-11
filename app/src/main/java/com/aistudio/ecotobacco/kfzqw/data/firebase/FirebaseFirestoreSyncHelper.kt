@@ -429,4 +429,27 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
             Log.w("FirestoreSyncHelper", "Persist transaction notice: ${e.message}")
         }
     }
+
+    suspend fun deleteProduct(userId: String, productId: Int) = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || productId <= 0) return@withContext
+        val fs = firestore ?: return@withContext
+        try {
+            val userDoc = fs.collection("users").document(userId)
+            userDoc.collection("products").document(productId.toString()).delete().await()
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "Delete product notice: ${e.message}")
+        }
+    }
+
+    suspend fun deleteTransaction(userId: String, txId: Int) = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || txId <= 0) return@withContext
+        val fs = firestore ?: return@withContext
+        try {
+            val userDoc = fs.collection("users").document(userId)
+            val txDoc = userDoc.collection("transactions").document(txId.toString())
+            txDoc.update("isDeleted", 1).await()
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "Delete transaction notice: ${e.message}")
+        }
+    }
 }

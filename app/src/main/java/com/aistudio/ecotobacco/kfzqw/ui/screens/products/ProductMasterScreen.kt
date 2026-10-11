@@ -117,6 +117,10 @@ fun ProductMasterScreen(
 ) {
     val products by viewModel.products.collectAsStateWithLifecycle()
     val unitOptions by viewModel.customUnits.collectAsStateWithLifecycle()
+    val customSubCategories by viewModel.customSubCategories.collectAsStateWithLifecycle()
+    val subCategoryOptions = remember(customSubCategories, products) {
+        (products.map { it.subCategory } + customSubCategories).filter { it.isNotBlank() }.distinct().sorted()
+    }
     val isFirestoreSyncing by viewModel.isFirestoreSyncing.collectAsStateWithLifecycle()
     val firestoreSyncProgress by viewModel.firestoreSyncProgress.collectAsStateWithLifecycle()
     val firestoreMessage by viewModel.firestoreMessage.collectAsStateWithLifecycle()
@@ -156,32 +160,11 @@ fun ProductMasterScreen(
             }
 
             val nameLower = prod.name.lowercase()
-            val matchCategory = when (selectedCategoryFilter) {
-                "TEMBAKAU" -> {
-                    nameLower.contains("tembakau") || nameLower.contains("tobacco") ||
-                            nameLower.contains("tingwe") || nameLower.contains("mole") ||
-                            nameLower.contains("flavour") || nameLower.contains("flavor") ||
-                            nameLower.contains("mild") || nameLower.contains("surya") ||
-                            nameLower.contains("bufalo") || nameLower.contains("buffalo") ||
-                            nameLower.contains("caml") || nameLower.contains("djarum") ||
-                            nameLower.contains("samsu") || nameLower.contains("rokok") ||
-                            nameLower.contains("nona") || nameLower.contains("putri") ||
-                            prod.unit.lowercase() in listOf("kg", "ons", "gram", "gr", "pack")
-                }
-                "ALAT" -> {
-                    nameLower.contains("alat") || nameLower.contains("linting") ||
-                            nameLower.contains("slorok") || nameLower.contains("roller") ||
-                            nameLower.contains("becak") || nameLower.contains("mesin")
-                }
-                "PAPIR" -> {
-                    nameLower.contains("papir") || nameLower.contains("kertas") ||
-                            nameLower.contains("busa") || nameLower.contains("filter") ||
-                            nameLower.contains("gizeh") || nameLower.contains("raw") ||
-                            nameLower.contains("radja") || nameLower.contains("cones")
-                }
-                "ADA_JUAL" -> prod.sellingPrice > 0.0
-                "BELUM_JUAL" -> prod.sellingPrice <= 0.0
-                else -> true
+            val matchCategory = when {
+                selectedCategoryFilter == "SEMUA" -> true
+                selectedCategoryFilter == "ADA_JUAL" -> prod.sellingPrice > 0.0
+                selectedCategoryFilter == "BELUM_JUAL" -> prod.sellingPrice <= 0.0
+                else -> prod.subCategory.equals(selectedCategoryFilter, ignoreCase = true)
             }
 
             matchQuery && matchCategory
@@ -274,6 +257,7 @@ fun ProductMasterScreen(
                 // --- 5. CATEGORY FILTER CHIPS ---
                 CyberFilterChipsRow(
                     selectedFilter = selectedCategoryFilter,
+                    subCategoryOptions = subCategoryOptions,
                     onSelectFilter = { selectedCategoryFilter = it }
                 )
 
@@ -384,16 +368,18 @@ fun ProductMasterScreen(
         if (showDialog) {
             AddProductDialog(
                 unitOptions = unitOptions,
+                subCategoryOptions = subCategoryOptions,
                 onAddCustomUnit = { viewModel.addCustomUnit(it) },
                 onUpdateCustomUnit = { old, new -> viewModel.updateCustomUnit(old, new) },
                 onDeleteCustomUnit = { viewModel.deleteCustomUnit(it) },
+                onAddCustomSubCategory = { viewModel.addCustomSubCategory(it) },
                 onDismiss = { showDialog = false },
-                onAdd = { name, price, unit, sellingPrice, sellingUnit, contentQuantity ->
+                onAdd = { name, price, unit, sellingPrice, sellingUnit, contentQuantity, category, subCategory ->
                     val exists = products.any { it.name.equals(name, ignoreCase = true) }
                     if (exists) {
                         Toast.makeText(context, "Nama produk sudah terdaftar!", Toast.LENGTH_SHORT).show()
                     } else {
-                        viewModel.addProduct(name, price, unit, sellingPrice, sellingUnit, contentQuantity)
+                        viewModel.addProduct(name, price, unit, sellingPrice, sellingUnit, contentQuantity, category, subCategory)
                         showDialog = false
                     }
                 }
@@ -404,12 +390,14 @@ fun ProductMasterScreen(
             EditProductDialog(
                 product = productToEdit!!,
                 unitOptions = unitOptions,
+                subCategoryOptions = subCategoryOptions,
                 onAddCustomUnit = { viewModel.addCustomUnit(it) },
                 onUpdateCustomUnit = { old, new -> viewModel.updateCustomUnit(old, new) },
                 onDeleteCustomUnit = { viewModel.deleteCustomUnit(it) },
+                onAddCustomSubCategory = { viewModel.addCustomSubCategory(it) },
                 onDismiss = { productToEdit = null },
-                onConfirm = { name, price, unit, sellingPrice, sellingUnit, contentQuantity ->
-                    viewModel.updateProduct(productToEdit!!.id, name, price, unit, sellingPrice, sellingUnit, contentQuantity)
+                onConfirm = { name, price, unit, sellingPrice, sellingUnit, contentQuantity, category, subCategory ->
+                    viewModel.updateProduct(productToEdit!!.id, name, price, unit, sellingPrice, sellingUnit, contentQuantity, category, subCategory)
                     productToEdit = null
                 },
                 onDelete = {
@@ -889,16 +877,15 @@ private fun CyberSearchBar(
 @Composable
 private fun CyberFilterChipsRow(
     selectedFilter: String,
+    subCategoryOptions: List<String>,
     onSelectFilter: (String) -> Unit
 ) {
-    val filters = listOf(
-        "SEMUA" to "⚡ Semua",
-        "TEMBAKAU" to "🌿 Tembakau",
-        "ALAT" to "⚙️ Alat Linting",
-        "PAPIR" to "📜 Papir / Busa",
-        "ADA_JUAL" to "💎 Ada Jual",
-        "BELUM_JUAL" to "⚠️ Belum Jual"
-    )
+    val filters = mutableListOf("SEMUA" to "⚡ Semua")
+    subCategoryOptions.forEach { sub ->
+        filters.add(sub to sub)
+    }
+    filters.add("ADA_JUAL" to "💎 Ada Jual")
+    filters.add("BELUM_JUAL" to "⚠️ Belum Jual")
 
     Row(
         modifier = Modifier
