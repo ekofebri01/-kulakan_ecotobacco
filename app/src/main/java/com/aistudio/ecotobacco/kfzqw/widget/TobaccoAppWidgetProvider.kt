@@ -246,7 +246,7 @@ class TobaccoAppWidgetProvider : AppWidgetProvider() {
                 R.id.widget_tv_kulakan_stats,
                 when (layoutId) {
                     R.layout.widget_tobacco_dashboard -> {
-                        "${data.totalKulakanCount} Transaksi Kulakan • ${formatDecimal(data.totalKulakanQty)} kg"
+                        "${data.totalKulakanCount} Transaksi • ${formatDecimal(data.totalKulakanQty)} kg"
                     }
                     R.layout.widget_tobacco_tiny -> {
                         "${data.totalKulakanCount} Trx"
@@ -263,11 +263,15 @@ class TobaccoAppWidgetProvider : AppWidgetProvider() {
             views.setTextViewText(R.id.widget_tv_active_plans, "${data.activePlansCount} Rencana")
             views.setTextViewText(
                 R.id.widget_tv_plan_items,
-                if (data.pendingItemsCount > 0) "${data.pendingItemsCount} Item Belum Beli" else "Semua Terbeli"
+                if (layoutId == R.layout.widget_tobacco_medium || layoutId == R.layout.widget_tobacco_compact) {
+                    if (data.pendingItemsCount > 0) "${data.pendingItemsCount} Belum Beli" else "Selesai"
+                } else {
+                    if (data.pendingItemsCount > 0) "${data.pendingItemsCount} Item Belum Beli" else "Semua Terbeli"
+                }
             )
             views.setTextViewText(
                 R.id.widget_tv_total_products,
-                if (layoutId == R.layout.widget_tobacco_dashboard) "${data.totalProductsCount} Jenis Produk" else "${data.totalProductsCount} Produk"
+                "${data.totalProductsCount} Produk"
             )
 
             if (data.lastUpdateTime != null) {

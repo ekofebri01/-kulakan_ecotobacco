@@ -5,9 +5,9 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="10dp">
 
-    <!-- Header Row -->
+    <!-- Header Row (Brand, Month Badge, Last Update, Refresh) -->
     <LinearLayout
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
@@ -16,37 +16,37 @@
         android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="20dp"
-            android:layout_height="20dp"
+            android:layout_width="18dp"
+            android:layout_height="18dp"
             android:contentDescription="@string/app_name"
             android:src="@drawable/ic_widget_inventory" />
 
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="6dp"
+            android:layout_marginStart="5dp"
             android:ellipsize="end"
             android:maxLines="1"
             android:singleLine="true"
             android:text="ECO TOBACCO"
             android:textColor="#F59E0B"
-            android:textSize="13sp"
+            android:textSize="12sp"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/widget_tv_month_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="8dp"
+            android:layout_marginStart="6dp"
             android:background="@drawable/widget_badge_bg"
             android:ellipsize="end"
             android:maxLines="1"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="3dp"
+            android:paddingHorizontal="7dp"
+            android:paddingVertical="2dp"
             android:singleLine="true"
             android:text="Okt 2026"
             android:textColor="#E2E8F0"
-            android:textSize="11sp"
+            android:textSize="10sp"
             android:textStyle="bold" />
 
         <FrameLayout
@@ -64,168 +64,219 @@
             android:singleLine="true"
             android:text="14:30 WIB"
             android:textColor="#94A3B8"
-            android:textSize="11sp" />
+            android:textSize="10sp" />
 
         <ImageView
             android:id="@+id/btn_widget_refresh"
-            android:layout_width="26dp"
-            android:layout_height="26dp"
+            android:layout_width="22dp"
+            android:layout_height="22dp"
             android:background="@drawable/widget_btn_bg"
             android:contentDescription="Segarkan Data"
-            android:padding="5dp"
+            android:padding="4dp"
             android:src="@drawable/ic_widget_refresh" />
     </LinearLayout>
 
-    <!-- HERO CARD: TOTAL KULAKAN BULAN INI -->
-    <LinearLayout
-        android:id="@+id/card_widget_hero"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:background="@drawable/widget_hero_card_bg"
-        android:orientation="vertical"
-        android:padding="10dp">
-
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal">
-
-            <ImageView
-                android:layout_width="15dp"
-                android:layout_height="15dp"
-                android:contentDescription="Kulakan"
-                android:src="@drawable/ic_widget_cart" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:text="TOTAL KULAKAN BULAN INI"
-                android:textColor="#34D399"
-                android:textSize="11sp"
-                android:textStyle="bold" />
-        </LinearLayout>
-
-        <TextView
-            android:id="@+id/widget_tv_total_kulakan_amount"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="3dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:singleLine="true"
-            android:text="Rp 0"
-            android:textColor="#FFFFFF"
-            android:textSize="20sp"
-            android:textStyle="bold" />
-
-        <TextView
-            android:id="@+id/widget_tv_kulakan_stats"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:singleLine="true"
-            android:text="0 Transaksi Kulakan • 0 kg"
-            android:textColor="#CBD5E1"
-            android:textSize="11sp" />
-    </LinearLayout>
-
-    <!-- Mini Cards Row (Overview) with fixed height to avoid squishing -->
+    <!-- Dynamic Dashboard Content (Proportional Two-Column Split Grid) -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:layout_marginTop="6dp"
         android:layout_marginBottom="6dp"
         android:baselineAligned="false"
         android:orientation="horizontal">
 
-        <!-- Card: Rencana Kulakan -->
+        <!-- Column 1 (Left): Kulakan Bulan Ini (Balanced weight: 1.15) -->
         <LinearLayout
-            android:id="@+id/card_widget_plans"
+            android:id="@+id/card_widget_hero"
             android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:layout_marginEnd="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_card_bg"
+            android:layout_height="match_parent"
+            android:layout_weight="1.15"
+            android:background="@drawable/widget_hero_card_bg"
             android:gravity="center_vertical"
             android:orientation="vertical"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp">
+            android:paddingHorizontal="10dp"
+            android:paddingVertical="8dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="14dp"
+                    android:layout_height="14dp"
+                    android:contentDescription="Kulakan"
+                    android:src="@drawable/ic_widget_cart" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="5dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="KULAKAN BULAN INI"
+                    android:textColor="#34D399"
+                    android:textSize="10sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
 
             <TextView
-                android:id="@+id/widget_tv_active_plans"
+                android:id="@+id/widget_tv_total_kulakan_amount"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:text="0 Rencana"
-                android:textColor="#38BDF8"
-                android:textSize="12sp"
+                android:text="Rp 0"
+                android:textColor="#FFFFFF"
+                android:textSize="17sp"
                 android:textStyle="bold" />
 
             <TextView
-                android:id="@+id/widget_tv_plan_items"
+                android:id="@+id/widget_tv_kulakan_stats"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
+                android:layout_marginTop="2dp"
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:text="0 Item Belum Beli"
+                android:text="0 Transaksi • 0 kg"
                 android:textColor="#CBD5E1"
                 android:textSize="10sp" />
         </LinearLayout>
 
-        <!-- Card: Stok Produk -->
+        <!-- Column 2 (Right): Rencana & Stok Stacked Cards (Balanced weight: 1.0) -->
         <LinearLayout
-            android:id="@+id/card_widget_stock"
             android:layout_width="0dp"
-            android:layout_height="44dp"
-            android:layout_marginStart="4dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_card_bg"
-            android:gravity="center_vertical"
-            android:orientation="vertical"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp">
+            android:layout_height="match_parent"
+            android:layout_marginStart="6dp"
+            android:layout_weight="1.0"
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/widget_tv_total_products"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:text="0 Produk"
-                android:textColor="#FBBF24"
-                android:textSize="12sp"
-                android:textStyle="bold" />
+            <!-- Card: Rencana Kulakan -->
+            <LinearLayout
+                android:id="@+id/card_widget_plans"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:background="@drawable/widget_card_bg"
+                android:gravity="center_vertical"
+                android:orientation="vertical"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="1dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:text="Katalog Stok"
-                android:textColor="#CBD5E1"
-                android:textSize="10sp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:contentDescription="Rencana"
+                        android:src="@drawable/ic_widget_plan" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="RENCANA"
+                        android:textColor="#38BDF8"
+                        android:textSize="9sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/widget_tv_active_plans"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="0 Rencana"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/widget_tv_plan_items"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="0 Item Belum Beli"
+                    android:textColor="#CBD5E1"
+                    android:textSize="9sp" />
+            </LinearLayout>
+
+            <!-- Card: Stok Produk -->
+            <LinearLayout
+                android:id="@+id/card_widget_stock"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_marginTop="4dp"
+                android:layout_weight="1"
+                android:background="@drawable/widget_card_bg"
+                android:gravity="center_vertical"
+                android:orientation="vertical"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <ImageView
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:contentDescription="Stok"
+                        android:src="@drawable/ic_widget_inventory" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="KATALOG STOK"
+                        android:textColor="#FBBF24"
+                        android:textSize="9sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/widget_tv_total_products"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="0 Produk"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
-    <!-- ACTION BUTTONS ROW -->
+    <!-- ACTION BUTTONS ROW (Proportional Full-Width Buttons) -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="36dp"
+        android:layout_height="32dp"
         android:orientation="horizontal">
 
         <!-- Button 1: Input Kulakan -->
@@ -233,7 +284,7 @@
             android:id="@+id/btn_widget_input_kulakan"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginEnd="4dp"
+            android:layout_marginEnd="3dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_kulakan_bg"
             android:gravity="center"
@@ -241,8 +292,8 @@
             android:paddingHorizontal="6dp">
 
             <ImageView
-                android:layout_width="14dp"
-                android:layout_height="14dp"
+                android:layout_width="13dp"
+                android:layout_height="13dp"
                 android:contentDescription="Input Kulakan"
                 android:src="@drawable/ic_widget_add" />
 
@@ -253,7 +304,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:text="+Input"
+                android:text="+ Input Kulakan"
                 android:textColor="#064E3B"
                 android:textSize="11sp"
                 android:textStyle="bold" />
@@ -264,7 +315,7 @@
             android:id="@+id/btn_widget_bikin_rencana"
             android:layout_width="0dp"
             android:layout_height="match_parent"
-            android:layout_marginStart="4dp"
+            android:layout_marginStart="3dp"
             android:layout_weight="1"
             android:background="@drawable/widget_btn_plan_bg"
             android:gravity="center"
@@ -272,8 +323,8 @@
             android:paddingHorizontal="6dp">
 
             <ImageView
-                android:layout_width="14dp"
-                android:layout_height="14dp"
+                android:layout_width="13dp"
+                android:layout_height="13dp"
                 android:contentDescription="Bikin Rencana"
                 android:src="@drawable/ic_widget_plan" />
 
@@ -284,7 +335,7 @@
                 android:ellipsize="end"
                 android:maxLines="1"
                 android:singleLine="true"
-                android:text="+Plan"
+                android:text="+ Bikin Rencana"
                 android:textColor="#FFFFFF"
                 android:textSize="11sp"
                 android:textStyle="bold" />

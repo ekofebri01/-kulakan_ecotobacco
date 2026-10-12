@@ -6,9 +6,9 @@
     android:background="@drawable/widget_background"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="5dp">
+    android:padding="6dp">
 
-    <!-- Mini Header: Icon + Brand + Refresh (Clickable) -->
+    <!-- Mini Header: Icon + Brand + Refresh -->
     <LinearLayout
         android:id="@+id/widget_header"
         android:layout_width="match_parent"
@@ -17,8 +17,8 @@
         android:orientation="horizontal">
 
         <ImageView
-            android:layout_width="16dp"
-            android:layout_height="16dp"
+            android:layout_width="15dp"
+            android:layout_height="15dp"
             android:contentDescription="@string/app_name"
             android:src="@drawable/ic_widget_inventory" />
 
@@ -43,11 +43,11 @@
             android:layout_height="18dp"
             android:background="@drawable/widget_btn_bg"
             android:contentDescription="Segarkan"
-            android:padding="2dp"
+            android:padding="3dp"
             android:src="@drawable/ic_widget_refresh" />
     </LinearLayout>
 
-    <!-- Mini Card Total Kulakan (Clickable to Reports) -->
+    <!-- Mini Card: Kulakan (Clickable to Reports) -->
     <LinearLayout
         android:id="@+id/card_widget_hero"
         android:layout_width="match_parent"

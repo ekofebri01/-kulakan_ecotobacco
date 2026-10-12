@@ -57,6 +57,7 @@ fun ProcurementPlanningScreen(
     onNavigateBack: () -> Unit
 ) {
     val plans by viewModel.procurementPlans.collectAsStateWithLifecycle()
+    val products by viewModel.products.collectAsStateWithLifecycle()
     var showAddEditDialog by remember { mutableStateOf(false) }
     var planToEdit by remember { mutableStateOf<ProcurementPlanWithItems?>(null) }
     var planToDelete by remember { mutableStateOf<ProcurementPlanWithItems?>(null) }
@@ -183,8 +184,8 @@ fun ProcurementPlanningScreen(
             onDismiss = { selectedPlanId = null },
             onToggle = { viewModel.toggleProcurementItemStatus(it) },
             onRemoveItem = { itemToRemoveFromPlan = it },
-            onShare = { planToShare, exportType, note ->
-                val shareText = generateShareText(planToShare, exportType, note)
+            onShare = { planToShare, exportType, note, subCategory ->
+                val shareText = generateShareText(planToShare, exportType, note, subCategory, products)
                 val sendIntent = Intent().apply {
                     action = Intent.ACTION_SEND
                     putExtra(Intent.EXTRA_TEXT, shareText)
@@ -195,7 +196,8 @@ fun ProcurementPlanningScreen(
             },
             onShareImage = { planToShare ->
                 sharePlanAsImage(context, planToShare)
-            }
+            },
+            allProducts = products
         )
     }
 

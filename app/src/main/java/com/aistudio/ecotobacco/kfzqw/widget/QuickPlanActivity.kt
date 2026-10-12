@@ -72,7 +72,7 @@ import com.aistudio.ecotobacco.kfzqw.data.local.AppDatabase
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementItemEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementPlanEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
-import com.aistudio.ecotobacco.kfzqw.ui.theme.MyApplicationTheme
+import com.aistudio.ecotobacco.kfzqw.ui.theme.EcoTobaccoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -94,7 +94,7 @@ class QuickPlanActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MyApplicationTheme(themeMode = "DARK") {
+            EcoTobaccoTheme {
                 val coroutineScope = rememberCoroutineScope()
                 val db = remember { AppDatabase.getInstance(applicationContext) }
                 val availableProducts = remember { mutableStateListOf<ProductEntity>() }

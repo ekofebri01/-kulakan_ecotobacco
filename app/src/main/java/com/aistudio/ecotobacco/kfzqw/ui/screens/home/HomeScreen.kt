@@ -590,7 +590,7 @@ fun HomeScreen(
                         // Main Stat: Total Kulakan (Large)
                         SummaryCardPremium(
                             label = "Total Kulakan Bulan Ini",
-                            value = currencyFormatter.format(totalSpent).replace("Rp", "Rp "),
+                            value = currencyFormatter.format(totalSpent.toDouble()).replace("Rp", "Rp "),
                             icon = Icons.Default.Payments,
                             bgColor = SummaryRed,
                             isLarge = true,

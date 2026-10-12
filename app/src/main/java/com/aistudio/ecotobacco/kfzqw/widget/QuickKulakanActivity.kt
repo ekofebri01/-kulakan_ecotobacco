@@ -69,7 +69,7 @@ import androidx.compose.ui.unit.sp
 import com.aistudio.ecotobacco.kfzqw.data.local.AppDatabase
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.TransactionEntity
-import com.aistudio.ecotobacco.kfzqw.ui.theme.MyApplicationTheme
+import com.aistudio.ecotobacco.kfzqw.ui.theme.EcoTobaccoTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -87,7 +87,7 @@ class QuickKulakanActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MyApplicationTheme(themeMode = "DARK") {
+            EcoTobaccoTheme {
                 val coroutineScope = rememberCoroutineScope()
                 val db = remember { AppDatabase.getInstance(applicationContext) }
                 val availableProducts = remember { mutableStateListOf<ProductEntity>() }

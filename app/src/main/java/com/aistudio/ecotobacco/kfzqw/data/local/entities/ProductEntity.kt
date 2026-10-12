@@ -6,12 +6,14 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "products")
 data class ProductEntity(
     @PrimaryKey(autoGenerate = true)
-    val id: Long = 0L,
+    val id: Int = 0,
     val name: String,
-    val category: String,       // Tembakau, Alat, Papir, Tembakau Kemasan, dll
-    val subCategory: String,    // Sub-kategori e.g. Garangan, Mesin Inject, dll
-    val stock: Int = 0,
-    val unit: String = "Kg / Pcs",
-    val buyPrice: Double = 0.0,
-    val sellPrice: Double = 0.0
+    val price: Double,
+    val unit: String = "kg",
+    val sellingPrice: Double = 0.0,
+    val sellingUnit: String = "pcs",
+    val contentQuantity: Double = 1.0,
+    val category: String = "",
+    val subCategory: String = "Umum",
+    val isDeleted: Int = 0
 )

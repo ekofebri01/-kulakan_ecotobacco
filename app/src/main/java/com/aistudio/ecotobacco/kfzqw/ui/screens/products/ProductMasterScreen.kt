@@ -721,11 +721,10 @@ private fun CyberTelemetryCard(
     modifier: Modifier = Modifier
 ) {
     Surface(
-        onClick = onClick,
+        modifier = modifier.clickable { onClick() },
         shape = RoundedCornerShape(14.dp),
         color = if (isSelected) CyberCardElevated else CyberCard,
-        border = BorderStroke(1.dp, if (isSelected) accentColor else CyberBorder),
-        modifier = modifier
+        border = BorderStroke(1.dp, if (isSelected) accentColor else CyberBorder)
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
@@ -897,7 +896,7 @@ private fun CyberFilterChipsRow(
         filters.forEach { (id, label) ->
             val isSelected = selectedFilter == id
             Surface(
-                onClick = { onSelectFilter(id) },
+                modifier = Modifier.clickable { onSelectFilter(id) },
                 shape = RoundedCornerShape(10.dp),
                 color = if (isSelected) CyberCyan else CyberCard,
                 border = BorderStroke(1.dp, if (isSelected) CyberCyan else CyberBorder)

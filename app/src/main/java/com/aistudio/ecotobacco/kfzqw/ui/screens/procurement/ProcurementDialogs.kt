@@ -1595,8 +1595,9 @@ fun PlanDetailDialog(
     onDismiss: () -> Unit,
     onToggle: (ProcurementItemEntity) -> Unit,
     onRemoveItem: (ProcurementItemEntity) -> Unit,
-    onShare: (ProcurementPlanWithItems, ProcurementExportType, String) -> Unit,
-    onShareImage: (ProcurementPlanWithItems) -> Unit
+    onShare: (ProcurementPlanWithItems, ProcurementExportType, String, String) -> Unit,
+    onShareImage: (ProcurementPlanWithItems) -> Unit,
+    allProducts: List<ProductEntity>
 ) {
     val totalEstimasiRealisasi = plan.items
         .filter { it.isBought }
@@ -1979,10 +1980,11 @@ fun PlanDetailDialog(
     if (showShareDialog) {
         SharePreviewDialog(
             plan = plan,
+            allProducts = viewModel.products.collectAsStateWithLifecycle().value,
             onDismiss = { showShareDialog = false },
-            onShareText = { exportType, note ->
+            onShareText = { exportType, note, subCategory ->
                 showShareDialog = false
-                onShare(plan, exportType, note)
+                onShare(plan, exportType, note, subCategory)
             },
             onShareImage = {
                 showShareDialog = false
@@ -1995,13 +1997,20 @@ fun PlanDetailDialog(
 @Composable
 fun SharePreviewDialog(
     plan: ProcurementPlanWithItems,
+    allProducts: List<ProductEntity>,
     onDismiss: () -> Unit,
-    onShareText: (ProcurementExportType, String) -> Unit,
+    onShareText: (ProcurementExportType, String, String) -> Unit,
     onShareImage: () -> Unit
 ) {
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var shareNote by remember { mutableStateOf("") }
+    var selectedSubCategory by remember { mutableStateOf("SEMUA") }
+    val uniqueSubCategories = remember(plan) {
+        (listOf("SEMUA") + plan.items.mapNotNull { item ->
+            allProducts.find { it.name.equals(item.productName, ignoreCase = true) }?.subCategory
+        }.distinct().filter { it.isNotBlank() }).sorted()
+    }
     
     val exportType = when (selectedTab) {
         0 -> ProcurementExportType.CHECKLIST
@@ -2010,8 +2019,8 @@ fun SharePreviewDialog(
         else -> ProcurementExportType.PLAIN
     }
     
-    val previewText = remember(plan, exportType, shareNote) {
-        generateShareText(plan, exportType, shareNote)
+    val previewText = remember(plan, exportType, shareNote, selectedSubCategory) {
+        generateShareText(plan, exportType, shareNote, selectedSubCategory, allProducts)
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -2063,6 +2072,43 @@ fun SharePreviewDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 // Tab Selection Format
+                Text(
+                    text = "Pilih Sub Kategori",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = primaryColor
+                )
+                ScrollableTabRow(
+                    selectedTabIndex = uniqueSubCategories.indexOf(selectedSubCategory),
+                    edgePadding = 0.dp,
+                    containerColor = surfaceVariant.copy(alpha = 0.4f),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    uniqueSubCategories.forEachIndexed { index, sub ->
+                        Tab(
+                            selected = selectedSubCategory == sub,
+                            onClick = { selectedSubCategory = sub },
+                            text = {
+                                Text(
+                                    text = sub,
+                                    fontWeight = if (selectedSubCategory == sub) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.sp
+                                )
+                            },
+                            selectedContentColor = primaryColor,
+                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                
+                Spacer(Modifier.height(8.dp))
+                
+                Text(
+                    text = "Pilih Format",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = primaryColor
+                )
                 ScrollableTabRow(
                     selectedTabIndex = selectedTab,
                     edgePadding = 0.dp,
@@ -2225,7 +2271,7 @@ fun SharePreviewDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onShareText(exportType, shareNote) },
+                onClick = { onShareText(exportType, shareNote, selectedSubCategory) },
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -2282,7 +2328,9 @@ fun String.underline(): String {
 fun generateShareText(
     planWithItems: ProcurementPlanWithItems,
     exportType: ProcurementExportType = ProcurementExportType.CHECKLIST,
-    note: String = ""
+    note: String = "",
+    subCategory: String? = null,
+    allProducts: List<ProductEntity> = emptyList()
 ): String {
     val formatter = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("id-ID")).apply {
         maximumFractionDigits = 0
@@ -2291,7 +2339,15 @@ fun generateShareText(
     val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(planWithItems.plan.date))
 
     // Otomatis urutkan item berdasarkan nama alfabetis A-Z
-    val sortedItems = planWithItems.items.sortedBy { it.productName.lowercase(Locale.ROOT) }
+    val filteredItems = if (subCategory != null && subCategory != "SEMUA") {
+        val productMap = allProducts.associateBy { it.name.lowercase(Locale.ROOT) }
+        planWithItems.items.filter { item ->
+            productMap[item.productName.lowercase(Locale.ROOT)]?.subCategory.equals(subCategory, ignoreCase = true)
+        }
+    } else {
+        planWithItems.items
+    }
+    val sortedItems = filteredItems.sortedBy { it.productName.lowercase(Locale.ROOT) }
 
     return buildString {
         append("🛒 *RENCANA KULAKAN*\n")
@@ -2337,7 +2393,11 @@ fun generateShareText(
 
         if (exportType == ProcurementExportType.DETAIL || exportType == ProcurementExportType.CHECKLIST) {
             append("━━━━━━━━━━━━━━\n")
-            append("📦 Total Item: ${sortedItems.size}\n")
+            append("📦 Total Item: ${sortedItems.size}")
+            if (subCategory != null && subCategory != "SEMUA") {
+                append(" ($subCategory)")
+            }
+            append("\n")
             if (exportType == ProcurementExportType.DETAIL) {
                 append("💰 *Total Estimasi*\n")
                 append("*${formatter.format(grandTotal).replace("Rp", "Rp ")}*\n")

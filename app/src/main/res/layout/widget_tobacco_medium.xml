@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="7dp">
+    android:padding="8dp">
 
     <!-- Header: Brand + Month Badge + Refresh -->
     <LinearLayout
@@ -60,138 +60,211 @@
             android:src="@drawable/ic_widget_refresh" />
     </LinearLayout>
 
-    <!-- HERO CARD: Total Kulakan Bulan Ini -->
+    <!-- Dynamic Content Area: Tier 1 (Hero Kulakan) and Tier 2 (Rencana + Stok) sharing height equally -->
     <LinearLayout
-        android:id="@+id/card_widget_hero"
         android:layout_width="match_parent"
         android:layout_height="0dp"
+        android:layout_weight="1"
         android:layout_marginTop="4dp"
         android:layout_marginBottom="4dp"
-        android:layout_weight="1"
-        android:background="@drawable/widget_hero_card_bg"
-        android:gravity="center_vertical"
-        android:orientation="vertical"
-        android:paddingHorizontal="8dp"
-        android:paddingVertical="4dp">
+        android:orientation="vertical">
 
+        <!-- TIER 1: Kulakan Bulan Ini (Weight 1.0 - balanced, not dominating!) -->
+        <LinearLayout
+            android:id="@+id/card_widget_hero"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1.0"
+            android:background="@drawable/widget_hero_card_bg"
+            android:gravity="center_vertical"
+            android:orientation="vertical"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:contentDescription="Kulakan"
+                    android:src="@drawable/ic_widget_cart" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="4dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="KULAKAN BULAN INI"
+                    android:textColor="#34D399"
+                    android:textSize="9sp"
+                    android:textStyle="bold" />
+            </LinearLayout>
+
+            <TextView
+                android:id="@+id/widget_tv_total_kulakan_amount"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="Rp 0"
+                android:textColor="#FFFFFF"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/widget_tv_kulakan_stats"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="1dp"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:text="0 Trx • 0 kg"
+                android:textColor="#CBD5E1"
+                android:textSize="9sp" />
+        </LinearLayout>
+
+        <!-- TIER 2: Info Cards Row: Rencana & Stok Side-by-Side (Weight 1.0 - equal height!) -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
+            android:layout_height="0dp"
+            android:layout_weight="1.0"
+            android:layout_marginTop="4dp"
+            android:baselineAligned="false"
             android:orientation="horizontal">
 
-            <ImageView
-                android:layout_width="12dp"
-                android:layout_height="12dp"
-                android:contentDescription="Kulakan"
-                android:src="@drawable/ic_widget_cart" />
+            <!-- Card: Rencana Kulakan -->
+            <LinearLayout
+                android:id="@+id/card_widget_plans"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginEnd="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/widget_card_bg"
+                android:gravity="center_vertical"
+                android:orientation="vertical"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="3dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:text="KULAKAN BULAN INI"
-                android:textColor="#34D399"
-                android:textSize="9sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/widget_tv_total_kulakan_amount"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:singleLine="true"
-            android:text="Rp 0"
-            android:textColor="#FFFFFF"
-            android:textSize="15sp"
-            android:textStyle="bold" />
+                    <ImageView
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:contentDescription="Rencana"
+                        android:src="@drawable/ic_widget_plan" />
 
-        <TextView
-            android:id="@+id/widget_tv_kulakan_stats"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="1dp"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:singleLine="true"
-            android:text="0 Trx • 0 kg"
-            android:textColor="#CBD5E1"
-            android:textSize="9sp" />
-    </LinearLayout>
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="3dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="RENCANA"
+                        android:textColor="#38BDF8"
+                        android:textSize="8sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
-    <!-- Mini Overview Row: Rencana & Stok (Fixed height, no squishing) -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="22dp"
-        android:layout_marginBottom="4dp"
-        android:orientation="horizontal">
+                <TextView
+                    android:id="@+id/widget_tv_active_plans"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="0 Rencana"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
 
-        <LinearLayout
-            android:id="@+id/card_widget_plans"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_marginEnd="3dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_card_bg"
-            android:gravity="center"
-            android:orientation="horizontal"
-            android:paddingHorizontal="4dp">
+                <TextView
+                    android:id="@+id/widget_tv_plan_items"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="0 Belum Beli"
+                    android:textColor="#CBD5E1"
+                    android:textSize="8sp" />
+            </LinearLayout>
 
-            <ImageView
-                android:layout_width="10dp"
-                android:layout_height="10dp"
-                android:contentDescription="Rencana"
-                android:src="@drawable/ic_widget_plan" />
+            <!-- Card: Stok Produk -->
+            <LinearLayout
+                android:id="@+id/card_widget_stock"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="2dp"
+                android:layout_weight="1"
+                android:background="@drawable/widget_card_bg"
+                android:gravity="center_vertical"
+                android:orientation="vertical"
+                android:paddingHorizontal="6dp"
+                android:paddingVertical="3dp">
 
-            <TextView
-                android:id="@+id/widget_tv_active_plans"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:text="0 Rencana"
-                android:textColor="#38BDF8"
-                android:textSize="9sp"
-                android:textStyle="bold" />
-        </LinearLayout>
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-        <LinearLayout
-            android:id="@+id/card_widget_stock"
-            android:layout_width="0dp"
-            android:layout_height="match_parent"
-            android:layout_marginStart="3dp"
-            android:layout_weight="1"
-            android:background="@drawable/widget_card_bg"
-            android:gravity="center"
-            android:orientation="horizontal"
-            android:paddingHorizontal="4dp">
+                    <ImageView
+                        android:layout_width="10dp"
+                        android:layout_height="10dp"
+                        android:contentDescription="Stok"
+                        android:src="@drawable/ic_widget_inventory" />
 
-            <ImageView
-                android:layout_width="10dp"
-                android:layout_height="10dp"
-                android:contentDescription="Stok"
-                android:src="@drawable/ic_widget_inventory" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="3dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:singleLine="true"
+                        android:text="STOK"
+                        android:textColor="#FBBF24"
+                        android:textSize="8sp"
+                        android:textStyle="bold" />
+                </LinearLayout>
 
-            <TextView
-                android:id="@+id/widget_tv_total_products"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="3dp"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:text="0 Produk"
-                android:textColor="#FBBF24"
-                android:textSize="9sp"
-                android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/widget_tv_total_products"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="1dp"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="0 Produk"
+                    android:textColor="#FFFFFF"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:singleLine="true"
+                    android:text="Katalog"
+                    android:textColor="#CBD5E1"
+                    android:textSize="8sp" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 
@@ -265,12 +338,6 @@
     </LinearLayout>
 
     <!-- Hidden compatibility elements -->
-    <TextView
-        android:id="@+id/widget_tv_plan_items"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        android:visibility="gone" />
-
     <TextView
         android:id="@+id/widget_tv_last_update"
         android:layout_width="0dp"
