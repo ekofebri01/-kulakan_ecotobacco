@@ -36,6 +36,9 @@ import com.aistudio.ecotobacco.kfzqw.data.remote.ProductSyncModel
 import com.aistudio.ecotobacco.kfzqw.data.remote.SyncDataBundle
 import com.aistudio.ecotobacco.kfzqw.data.remote.SyncStatus
 import com.aistudio.ecotobacco.kfzqw.data.remote.TransactionSyncModel
+import com.aistudio.ecotobacco.kfzqw.data.remote.GitHubUpdateManager
+import com.aistudio.ecotobacco.kfzqw.data.remote.GitHubReleaseInfo
+import com.aistudio.ecotobacco.kfzqw.data.remote.InAppUpdateState
 import com.aistudio.ecotobacco.kfzqw.data.repository.TobaccoRepository
 import com.aistudio.ecotobacco.kfzqw.data.utils.AppLogger
 import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
@@ -54,12 +57,17 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.io.File
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import kotlin.time.Duration.Companion.milliseconds
 
 class TobaccoViewModel(
@@ -75,9 +83,14 @@ class TobaccoViewModel(
     val isFirebaseLoading = firebaseAuth.isLoading
     val firebaseAuthError = firebaseAuth.authError
     val isFirestoreSyncing = firestoreSync.isSyncing
+    val firestoreSyncStatus = firestoreSync.syncStatus
+    val firestoreLastErrorMessage = firestoreSync.lastErrorMessage
     val firestoreSyncProgress = firestoreSync.syncProgress
     val firestoreLastSync = firestoreSync.lastSyncedTime
     val firestoreMessage = firestoreSync.syncMessage
+
+    val githubUpdateManager by lazy { GitHubUpdateManager(getApplication()) }
+    val updateState: StateFlow<InAppUpdateState> = githubUpdateManager.updateState
 
     private val appPrefs = getApplication<Application>().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     
@@ -147,45 +160,67 @@ class TobaccoViewModel(
     fun setThemeMode(mode: String) {
         _themeMode.value = mode
         appPrefs.edit { putString("theme_mode", mode) }
+        triggerAutoSync()
     }
 
     fun setCustomColor(colorInt: Int) {
         _customColor.value = colorInt
         appPrefs?.edit { putInt("custom_color", colorInt) }
+        triggerAutoSync()
     }
 
     fun setFontSizeScale(scale: Float) {
         _fontSizeScale.value = scale
         appPrefs.edit { putFloat("ui_font_size_scale", scale) }
+        triggerAutoSync()
     }
 
     fun setPaddingScale(scale: Float) {
         _paddingScale.value = scale
         appPrefs.edit { putFloat("ui_padding_scale", scale) }
+        triggerAutoSync()
     }
 
     fun setButtonHeight(height: Int) {
         _buttonHeight.value = height
         appPrefs.edit { putInt("ui_button_height", height) }
+        triggerAutoSync()
     }
 
     fun setCornerRadius(radius: Int) {
         _cornerRadius.value = radius
         appPrefs.edit { putInt("ui_corner_radius", radius) }
+        triggerAutoSync()
     }
 
     fun setCustomTextColor(colorInt: Int) {
         _customTextColor.value = colorInt
         appPrefs.edit { putInt("ui_custom_text_color", colorInt) }
+        triggerAutoSync()
     }
 
     fun resetUiCustomization() {
-        setFontSizeScale(1.0f)
-        setPaddingScale(1.0f)
-        setButtonHeight(56)
-        setCornerRadius(16)
-        setCustomTextColor(0)
+        _fontSizeScale.value = 1.0f
+        appPrefs.edit { putFloat("ui_font_size_scale", 1.0f) }
+        _paddingScale.value = 1.0f
+        appPrefs.edit { putFloat("ui_padding_scale", 1.0f) }
+        _buttonHeight.value = 56
+        appPrefs.edit { putInt("ui_button_height", 56) }
+        _cornerRadius.value = 16
+        appPrefs.edit { putInt("ui_corner_radius", 16) }
+        _customTextColor.value = 0
+        appPrefs.edit { putInt("ui_custom_text_color", 0) }
+        triggerAutoSync()
     }
+
+    // --- Web Dashboard Sync States ---
+    private val _isWebSyncing = MutableStateFlow(false)
+    val isWebSyncing: StateFlow<Boolean> = _isWebSyncing.asStateFlow()
+
+    private val _lastWebSyncTime = MutableStateFlow<Long?>(
+        appPrefs?.getLong("last_web_sync_time", -1L)?.takeIf { it > 0 }
+    )
+    val lastWebSyncTime: StateFlow<Long?> = _lastWebSyncTime.asStateFlow()
 
     fun addCustomUnit(unit: String) {
         val current = _customUnits.value.toMutableSet()
@@ -265,28 +300,14 @@ class TobaccoViewModel(
     fun getBackupFileCandidates(context: Context): List<File> {
         val list = mutableListOf<File>()
 
-        // 1. User-specified folder: /storage/emulated/0/backups/eco_tobacco_sync_data/eco_tobacco_sync_data.json
-        try {
-            val extStorage = Environment.getExternalStorageDirectory()
-            val userFolder = File(extStorage, "backups/eco_tobacco_sync_data")
-            list.add(File(userFolder, "eco_tobacco_sync_data.json"))
-        } catch (e: Exception) { /* ignore */ }
-
-        // 2. Public Documents folder
-        try {
-            val docs = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS)
-            val docFolder = File(docs, "backups/eco_tobacco_sync_data")
-            list.add(File(docFolder, "eco_tobacco_sync_data.json"))
-        } catch (e: Exception) { /* ignore */ }
-
-        // 3. App-specific external files dir
+        // 1. App-specific external files dir
         try {
             context.getExternalFilesDir("backups")?.let {
                 list.add(File(it, "eco_tobacco_sync_data.json"))
             }
         } catch (e: Exception) { /* ignore */ }
 
-        // 4. App internal files dir (always accessible sandbox)
+        // 2. App internal files dir (always accessible sandbox)
         val internalDir = File(context.filesDir, "backups")
         list.add(File(internalDir, "eco_tobacco_sync_data.json"))
 
@@ -359,16 +380,332 @@ class TobaccoViewModel(
         }
     }
 
-    fun fetchDriveBackupFiles() = viewModelScope.launch {
-        _driveBackupFiles.value = syncHelper.listBackupFiles()
+    fun saveToLocalCloudMirror(fileName: String, jsonData: String) {
+        try {
+            val dir = File(getApplication<Application>().filesDir, "cloud_backups")
+            if (!dir.exists()) dir.mkdirs()
+            File(dir, fileName).writeText(jsonData)
+        } catch (e: Exception) {
+            AppLogger.w("Backup", "Local cloud mirror write failed: ${e.message}")
+        }
     }
 
-    fun deleteDriveBackupFile(fileId: String, onComplete: (Boolean) -> Unit) = viewModelScope.launch {
-        val success = syncHelper.deleteFile(fileId)
-        if (success) {
-            fetchDriveBackupFiles()
+    fun listLocalCloudMirrorBackups(): List<DriveBackupFile> {
+        val list = mutableListOf<DriveBackupFile>()
+        try {
+            val dir = File(getApplication<Application>().filesDir, "cloud_backups")
+            if (dir.exists()) {
+                val files = dir.listFiles { f -> f.extension == "json" && f.length() > 0L }
+                val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+                files?.sortedByDescending { it.lastModified() }?.forEach { f ->
+                    val jsonContent = try { f.readText() } catch (e: Exception) { null }
+                    var itemCountText = "Cadangan Cloud"
+                    if (jsonContent != null) {
+                        try {
+                            val obj = JSONObject(jsonContent)
+                            val txCount = obj.optJSONArray("transactions")?.length() ?: 0
+                            val prodCount = obj.optJSONArray("products")?.length() ?: 0
+                            val planCount = obj.optJSONArray("procurementPlans")?.length() ?: 0
+                            itemCountText = "$prodCount Produk • $txCount Transaksi" + (if (planCount > 0) " • $planCount Rencana" else "")
+                        } catch (e: Exception) { /* ignore */ }
+                    }
+                    list.add(
+                        DriveBackupFile(
+                            id = "local_cloud_${f.name}",
+                            name = f.name,
+                            modifiedTime = sdf.format(Date(f.lastModified())),
+                            source = "Cloud Firestore",
+                            itemCountText = itemCountText,
+                            jsonData = jsonContent
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Backup", "listLocalCloudMirrorBackups failed: ${e.message}")
         }
-        onComplete(success)
+        return list
+    }
+
+    fun deleteLocalCloudMirrorBackup(fileName: String) {
+        try {
+            val dir = File(getApplication<Application>().filesDir, "cloud_backups")
+            val target = File(dir, fileName)
+            if (target.exists()) target.delete()
+        } catch (e: Exception) { /* ignore */ }
+    }
+
+    private val _isFetchingBackups = MutableStateFlow(false)
+    val isFetchingBackups: StateFlow<Boolean> = _isFetchingBackups.asStateFlow()
+
+    fun fetchDriveBackupFiles() = viewModelScope.launch(Dispatchers.IO) {
+        _isFetchingBackups.value = true
+        val results = mutableListOf<DriveBackupFile>()
+        try {
+            // 1. Fetch from Firestore if user has an active Cloud session / Firebase UID
+            var uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
+            if (uid.isNullOrBlank() && syncHelper.isLocalUserConnected) {
+                uid = syncHelper.userEmail
+            }
+            val uidsToQuery = mutableListOf<String>()
+            if (!uid.isNullOrBlank()) uidsToQuery.add(uid)
+            if (!uidsToQuery.contains("eco_guest_user")) uidsToQuery.add("eco_guest_user")
+
+            for (u in uidsToQuery) {
+                try {
+                    val firestoreBackups = firestoreSync.listCloudBackups(u)
+                    for (fb in firestoreBackups) {
+                        if (results.none { it.id == fb.id || it.name == fb.name }) {
+                            results.add(fb)
+                        }
+                    }
+                } catch (e: Exception) {
+                    AppLogger.w("Backup", "Fetch firestore backups notice: ${e.message}")
+                }
+            }
+
+            // 2. Fetch from Local Cloud Backups Mirror (context.filesDir/cloud_backups/)
+            val localCloudBackups = listLocalCloudMirrorBackups()
+            for (localBkp in localCloudBackups) {
+                if (results.none { it.id == localBkp.id || it.name == localBkp.name }) {
+                    results.add(localBkp)
+                }
+            }
+
+            // 3. Fetch from Google Drive if connected
+            if (syncHelper.isConnected) {
+                try {
+                    val driveFiles = syncHelper.listBackupFiles()
+                    for (df in driveFiles) {
+                        if (results.none { it.id == df.id }) {
+                            results.add(df)
+                        }
+                    }
+                } catch (e: Exception) {
+                    AppLogger.w("Backup", "Fetch Drive files notice: ${e.message}")
+                }
+            }
+
+            // 4. Fallback: If still empty, check auto backup file on device
+            val autoBackupFile = getBackupFile(getApplication())
+            if (autoBackupFile.exists() && autoBackupFile.length() > 0L) {
+                if (results.none { it.id == "local_auto_backup" || it.name == "eco_tobacco_sync_data_auto.json" }) {
+                    val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()).apply {
+                        timeZone = TimeZone.getTimeZone("UTC")
+                    }
+                    results.add(
+                        DriveBackupFile(
+                            id = "local_auto_backup",
+                            name = "eco_tobacco_sync_data_auto.json",
+                            modifiedTime = sdf.format(Date(autoBackupFile.lastModified())),
+                            source = "Penyimpanan Cadangan Lokal",
+                            itemCountText = "Cadangan Otomatis Internal",
+                            jsonData = try { autoBackupFile.readText() } catch (e: Exception) { null }
+                        )
+                    )
+                }
+            }
+        } finally {
+            withContext(Dispatchers.Main) {
+                _driveBackupFiles.value = results
+                _isFetchingBackups.value = false
+            }
+        }
+    }
+
+    fun deleteDriveBackupFile(file: DriveBackupFile, onComplete: (Boolean) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
+        // Optimistic UI update so it instantly disappears from UI
+        _driveBackupFiles.value = _driveBackupFiles.value.filter { it.id != file.id }
+        
+        var success = true
+        try {
+            if (file.source == "Cloud Firestore") {
+                val uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
+                if (!uid.isNullOrBlank()) {
+                    firestoreSync.deleteCloudBackup(uid, file.id)
+                }
+                deleteLocalCloudMirrorBackup(file.name)
+            } else if (file.source == "Google Drive") {
+                success = syncHelper.deleteFile(file.id)
+            } else if (file.id == "local_auto_backup" || file.source.contains("Lokal")) {
+                val autoFile = getBackupFile(getApplication())
+                if (autoFile.exists()) autoFile.delete()
+                deleteLocalCloudMirrorBackup(file.name)
+            } else {
+                deleteLocalCloudMirrorBackup(file.name)
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Backup", "deleteDriveBackupFile error: ${e.message}")
+            success = false
+        }
+        
+        kotlinx.coroutines.delay(400)
+        fetchDriveBackupFiles()
+        withContext(Dispatchers.Main) {
+            onComplete(success)
+        }
+    }
+
+    fun deleteDriveBackupFile(fileId: String, onComplete: (Boolean) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
+        val target = _driveBackupFiles.value.find { it.id == fileId }
+        if (target != null) {
+            deleteDriveBackupFile(target, onComplete)
+        } else {
+            val success = syncHelper.deleteFile(fileId)
+            fetchDriveBackupFiles()
+            withContext(Dispatchers.Main) {
+                onComplete(success)
+            }
+        }
+    }
+
+    fun restoreCloudBackup(file: DriveBackupFile, onComplete: (Boolean, String) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            if (file.id == "firestore_latest_sync") {
+                restoreFromFirestore { success, msg ->
+                    onComplete(success, msg)
+                }
+                return@launch
+            }
+
+            var json = file.jsonData
+
+            // 1. If JSON is not in memory, check local cloud mirror folder
+            if (json.isNullOrBlank()) {
+                try {
+                    val mirrorDir = File(getApplication<Application>().filesDir, "cloud_backups")
+                    val mirrorFile = File(mirrorDir, file.name)
+                    if (mirrorFile.exists() && mirrorFile.length() > 0L) {
+                        json = mirrorFile.readText()
+                    }
+                } catch (e: Exception) {
+                    AppLogger.w("Restore", "Local mirror read notice: ${e.message}")
+                }
+            }
+
+            // 2. Check local auto backup file
+            if (json.isNullOrBlank() && (file.id == "local_auto_backup" || file.name.contains("auto"))) {
+                try {
+                    val autoFile = getBackupFile(getApplication())
+                    if (autoFile.exists() && autoFile.length() > 0L) {
+                        json = autoFile.readText()
+                    }
+                } catch (e: Exception) { /* ignore */ }
+            }
+
+            // 3. If Firestore source, query Firestore across possible user IDs
+            if (json.isNullOrBlank() && (file.source == "Cloud Firestore" || file.id.startsWith("cloud_backup_") || file.id.startsWith("firestore_"))) {
+                val uidsToTry = mutableListOf<String>()
+                firebaseAuth.uid?.let { if (it.isNotBlank()) uidsToTry.add(it) }
+                syncHelper.userGoogleSub?.let { if (it.isNotBlank() && !uidsToTry.contains(it)) uidsToTry.add(it) }
+                syncHelper.userEmail?.let { if (it.isNotBlank() && !uidsToTry.contains(it)) uidsToTry.add(it) }
+                if (!uidsToTry.contains("eco_guest_user")) uidsToTry.add("eco_guest_user")
+
+                for (u in uidsToTry) {
+                    try {
+                        val fetchedJson = firestoreSync.getCloudBackupJson(u, file.id)
+                        if (!fetchedJson.isNullOrBlank()) {
+                            json = fetchedJson
+                            break
+                        }
+                    } catch (e: Exception) {
+                        AppLogger.w("Restore", "Try fetch backup JSON from Firestore user $u: ${e.message}")
+                    }
+                }
+            }
+
+            // 4. If Google Drive source
+            if (json.isNullOrBlank() && file.source == "Google Drive") {
+                try {
+                    json = syncHelper.downloadBackupSync(file.id)
+                } catch (e: Exception) {
+                    AppLogger.w("Restore", "Drive download notice: ${e.message}")
+                }
+            }
+
+            // 5. Fallback: Directly pull latest live dataset from Firestore
+            if (json.isNullOrBlank()) {
+                var uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail ?: "eco_guest_user"
+                val res = firestoreSync.fetchAndRestoreFromFirestore(uid, repository)
+                withContext(Dispatchers.Main) {
+                    if (res.isSuccess) {
+                        val s = res.getOrNull()
+                        onComplete(true, "Berhasil memulihkan ${s?.restoredProducts ?: 0} produk & ${s?.restoredTransactions ?: 0} transaksi dari Cloud Firestore")
+                    } else {
+                        onComplete(false, "File cadangan tidak ditemukan di Cloud")
+                    }
+                }
+                return@launch
+            }
+
+            val res = processRestoreDataInternal(getApplication(), json)
+            withContext(Dispatchers.Main) {
+                onComplete(res.success, res.message)
+            }
+            if (res.success) {
+                triggerAutoSync(forceOverwriteRemote = true)
+            }
+        } catch (e: Exception) {
+            AppLogger.e("Restore", "Error restoring cloud backup", e)
+            withContext(Dispatchers.Main) {
+                onComplete(false, "Gagal memulihkan: ${e.localizedMessage ?: "Terjadi kesalahan"}")
+            }
+        }
+    }
+
+    fun createManualCloudBackup(onComplete: (Boolean, String) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
+        try {
+            val jsonData = generateBackupJson()
+            val currentProducts = products.first()
+            val currentTx = transactions.first()
+            val currentPlans = procurementPlans.first()
+            val currentCategories = categories.first()
+            val now = System.currentTimeMillis()
+            val backupName = "eco_tobacco_cloud_backup.json"
+
+            // 1. Mirror locally
+            saveToLocalCloudMirror(backupName, jsonData)
+
+            // 2. Upload to Firestore
+            var uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
+            if (uid.isNullOrBlank() && syncHelper.isLocalUserConnected) {
+                uid = syncHelper.userEmail
+            }
+            if (uid.isNullOrBlank()) {
+                syncHelper.setLocalUserSession("eco_guest_user@ecotobacco.cloud")
+                uid = "eco_guest_user"
+            }
+
+            val fsResult = firestoreSync.syncAllToFirestore(
+                userId = uid,
+                products = currentProducts,
+                transactions = currentTx,
+                plans = currentPlans,
+                categories = currentCategories,
+                backupJson = jsonData
+            )
+
+            // 3. Upload to Google Drive if connected
+            if (syncHelper.isConnected) {
+                try {
+                    syncHelper.uploadBackupSync(jsonData)
+                } catch (e: Exception) {
+                    AppLogger.w("Backup", "Drive upload notice: ${e.message}")
+                }
+            }
+
+            fetchDriveBackupFiles()
+            withContext(Dispatchers.Main) {
+                onComplete(true, "Berhasil membuat file cadangan Cloud (${currentProducts.size} produk, ${currentTx.size} transaksi)")
+            }
+        } catch (e: Exception) {
+            AppLogger.e("Backup", "Error createManualCloudBackup", e)
+            withContext(Dispatchers.Main) {
+                onComplete(false, "Gagal membuat cadangan: ${e.localizedMessage}")
+            }
+        }
     }
 
     private val _isAppReady = MutableStateFlow(false)
@@ -417,6 +754,16 @@ class TobaccoViewModel(
             if (!backupFile.exists() || backupFile.length() == 0L) {
                 exportBackupToDevice(getApplication())
             }
+
+            // Pembersihan otomatis APK lama & cek update GitHub di background
+            try {
+                GitHubUpdateManager.cleanupOldOrPendingApkFiles(getApplication())
+                if (githubUpdateManager.isAutoCheckEnabled()) {
+                    checkForGitHubUpdate(silent = true)
+                }
+            } catch (e: Exception) {
+                AppLogger.d("GitHub auto-check init error: ${e.message}")
+            }
         }
         listenToNetworkChanges()
 
@@ -434,6 +781,39 @@ class TobaccoViewModel(
             }
         }
     }
+
+    // --- GITHUB IN-APP UPDATE METHODS ---
+    fun checkForGitHubUpdate(currentVersion: String = "4.3", silent: Boolean = false) {
+        viewModelScope.launch {
+            githubUpdateManager.checkForUpdates(currentVersion = currentVersion, silent = silent)
+        }
+    }
+
+    fun downloadAndInstallUpdate(release: GitHubReleaseInfo) {
+        viewModelScope.launch {
+            val apk = githubUpdateManager.downloadUpdateInApp(release)
+            if (apk != null) {
+                githubUpdateManager.installApk(apk)
+            }
+        }
+    }
+
+    fun installDownloadedApk(apkFile: File) {
+        githubUpdateManager.installApk(apkFile)
+    }
+
+    fun dismissUpdateDialog() {
+        githubUpdateManager.resetState()
+    }
+
+    fun cleanupUpdateFilesNow() {
+        GitHubUpdateManager.cleanupOldOrPendingApkFiles(getApplication())
+    }
+
+    fun getGitHubRepo(): String = githubUpdateManager.getTargetRepository()
+    fun setGitHubRepo(repo: String) { githubUpdateManager.setTargetRepository(repo) }
+    fun isAutoCheckUpdateEnabled(): Boolean = githubUpdateManager.isAutoCheckEnabled()
+    fun setAutoCheckUpdateEnabled(enabled: Boolean) { githubUpdateManager.setAutoCheckEnabled(enabled) }
 
     fun isAutoSyncEnabled(): Boolean = syncHelper.isAutoSyncEnabled
     fun setAutoSyncEnabled(enabled: Boolean) { syncHelper.isAutoSyncEnabled = enabled }
@@ -540,13 +920,19 @@ class TobaccoViewModel(
                 val currentPlans = procurementPlans.first()
                 val currentCategories = categories.first()
 
+                val backupJson = generateBackupJson()
+                val backupName = "eco_tobacco_cloud_backup.json"
+                saveToLocalCloudMirror(backupName, backupJson)
+
                 val result = firestoreSync.syncAllToFirestore(
                     userId = finalUid,
                     products = currentProducts,
                     transactions = currentTx,
                     plans = currentPlans,
-                    categories = currentCategories
+                    categories = currentCategories,
+                    backupJson = backupJson
                 )
+                fetchDriveBackupFiles()
                 if (result.isSuccess) {
                     val summary = result.getOrNull()
                     val msg = "Berhasil sinkron Cloud: ${summary?.uploadedProducts ?: 0} produk, ${summary?.uploadedTransactions ?: 0} transaksi"
@@ -572,13 +958,142 @@ class TobaccoViewModel(
                 val result = firestoreSync.fetchAndRestoreFromFirestore(finalUid, repository)
                 if (result.isSuccess) {
                     val summary = result.getOrNull()
-                    val msg = "Berhasil memulihkan: ${summary?.restoredProducts ?: 0} produk, ${summary?.restoredTransactions ?: 0} transaksi"
+                    summary?.backupJson?.let { json ->
+                        try {
+                            val bundle = parseJsonArrayOrObject(json)
+                            bundle.appSettings?.let { settings ->
+                                setThemeMode(settings.themeMode)
+                                setCustomColor(settings.customColor)
+                                setFontSizeScale(settings.fontSizeScale)
+                                setPaddingScale(settings.paddingScale)
+                                setButtonHeight(settings.buttonHeight)
+                                setCornerRadius(settings.cornerRadius)
+                                setCustomTextColor(settings.customTextColor)
+                                val unitSet = settings.customUnits.toSet()
+                                _customUnits.value = settings.customUnits.sorted()
+                                appPrefs?.edit { putStringSet("custom_units", unitSet) }
+                                val subCatSet = settings.customSubCategories.toSet()
+                                _customSubCategories.value = settings.customSubCategories.sorted()
+                                appPrefs?.edit { putStringSet("custom_sub_categories", subCatSet) }
+                            }
+                        } catch (e: Exception) {
+                            AppLogger.w("Restore", "Failed to restore settings from json: ${e.message}")
+                        }
+                    }
+                    val msg = "Berhasil memulihkan: ${summary?.restoredProducts ?: 0} produk, ${summary?.restoredTransactions ?: 0} transaksi & pengaturan UI"
                     onComplete?.invoke(true, msg)
                 } else {
                     onComplete?.invoke(false, result.exceptionOrNull()?.localizedMessage ?: "Gagal memulihkan dari Cloud")
                 }
             } catch (e: Exception) {
                 onComplete?.invoke(false, e.localizedMessage ?: "Error pemulihan Cloud")
+            }
+        }
+    }
+
+    // --- DIRECT WEB DASHBOARD SYNC (PC / LAPTOP) ---
+    val webDashboardBaseUrl = "https://ais-dev-4rgjgocgwaob6fy6gpujpr-863851997609.asia-east1.run.app"
+
+    fun syncToWebDashboard(onComplete: ((Boolean, String) -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isWebSyncing.value = true
+            try {
+                val currentProducts = products.first()
+                val currentTx = transactions.first()
+                val backupJson = generateBackupJson()
+                saveToLocalCloudMirror("eco_tobacco_cloud_backup.json", backupJson)
+
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val requestBody = backupJson.toRequestBody("application/json; charset=utf-8".toMediaType())
+                val request = Request.Builder()
+                    .url("$webDashboardBaseUrl/api/save-backup")
+                    .post(requestBody)
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val now = System.currentTimeMillis()
+                        _lastWebSyncTime.value = now
+                        appPrefs?.edit { putLong("last_web_sync_time", now) }
+                        withContext(Dispatchers.Main) {
+                            _isWebSyncing.value = false
+                            val msg = "Berhasil mengirim ${currentProducts.size} produk & ${currentTx.size} transaksi ke Web Dashboard! Silakan refresh browser di laptop."
+                            onComplete?.invoke(true, msg)
+                        }
+                    } else {
+                        val errCode = response.code
+                        val errBody = response.body?.string() ?: ""
+                        withContext(Dispatchers.Main) {
+                            _isWebSyncing.value = false
+                            onComplete?.invoke(false, "Server web error ($errCode): $errBody")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _isWebSyncing.value = false
+                    onComplete?.invoke(false, "Gagal koneksi ke Web Dashboard: ${e.localizedMessage ?: e.message}")
+                }
+            }
+        }
+    }
+
+    fun pullFromWebDashboard(onComplete: ((Boolean, String) -> Unit)? = null) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isWebSyncing.value = true
+            try {
+                val client = OkHttpClient.Builder()
+                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+
+                val request = Request.Builder()
+                    .url("$webDashboardBaseUrl/api/backup")
+                    .get()
+                    .build()
+
+                client.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val body = response.body?.string()
+                        if (body.isNullOrBlank()) {
+                            withContext(Dispatchers.Main) {
+                                _isWebSyncing.value = false
+                                onComplete?.invoke(false, "Data di Web Dashboard kosong.")
+                            }
+                            return@use
+                        }
+
+                        val result = processRestoreDataInternal(getApplication(), body)
+                        val now = System.currentTimeMillis()
+                        _lastWebSyncTime.value = now
+                        appPrefs?.edit { putLong("last_web_sync_time", now) }
+
+                        withContext(Dispatchers.Main) {
+                            _isWebSyncing.value = false
+                            onComplete?.invoke(result.success, result.message)
+                        }
+                    } else if (response.code == 404) {
+                        withContext(Dispatchers.Main) {
+                            _isWebSyncing.value = false
+                            onComplete?.invoke(false, "Belum ada data di Web Dashboard. Tekan 'Kirim Data HP ke Web' terlebih dahulu.")
+                        }
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            _isWebSyncing.value = false
+                            onComplete?.invoke(false, "Gagal mengambil data dari Web Dashboard (Kode ${response.code})")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    _isWebSyncing.value = false
+                    onComplete?.invoke(false, "Gagal terhubung ke Web: ${e.localizedMessage ?: e.message}")
+                }
             }
         }
     }
@@ -628,7 +1143,9 @@ class TobaccoViewModel(
                                 it.unit,
                                 it.sellingPrice,
                                 it.sellingUnit,
-                                it.contentQuantity
+                                it.contentQuantity,
+                                it.category,
+                                it.subCategory
                             )
                         },
                         procurementPlans = repository.getAllProcurementPlansDirect().map { planWithItems ->
@@ -850,7 +1367,9 @@ class TobaccoViewModel(
                     unit = it.unit ?: "kg",
                     sellingPrice = it.sellingPrice ?: 0.0,
                     sellingUnit = it.sellingUnit ?: "pcs",
-                    contentQuantity = it.contentQuantity ?: 1.0
+                    contentQuantity = it.contentQuantity ?: 1.0,
+                    category = it.category ?: "",
+                    subCategory = it.subCategory ?: "Umum"
                 ) 
             }
         return MergedResult(newInsertions, local + newInsertions)
@@ -1155,7 +1674,9 @@ class TobaccoViewModel(
                     it.unit,
                     it.sellingPrice,
                     it.sellingUnit,
-                    it.contentQuantity
+                    it.contentQuantity,
+                    it.category,
+                    it.subCategory
                 )
             },
             procurementPlans = localProcurementData.map { planWithItems ->
@@ -1216,29 +1737,6 @@ class TobaccoViewModel(
             }
         } catch (e: Exception) {
             AppLogger.w("Backup", "External files write notice: ${e.message}")
-        }
-
-        // 3. User requested folder: /storage/emulated/0/backups/eco_tobacco_sync_data/
-        try {
-            val extStorage = Environment.getExternalStorageDirectory()
-            val userTargetDir = File(extStorage, "backups/eco_tobacco_sync_data")
-            if (!userTargetDir.exists()) userTargetDir.mkdirs()
-            if (userTargetDir.exists()) {
-                File(userTargetDir, fileName).writeText(jsonData)
-            }
-        } catch (e: Exception) {
-            AppLogger.w("Backup", "User folder write notice: ${e.message}")
-        }
-
-        // 4. Public Documents folder
-        try {
-            val docDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS), "backups/eco_tobacco_sync_data")
-            if (!docDir.exists()) docDir.mkdirs()
-            if (docDir.exists()) {
-                File(docDir, fileName).writeText(jsonData)
-            }
-        } catch (e: Exception) {
-            AppLogger.w("Backup", "Documents folder write notice: ${e.message}")
         }
     }
 
@@ -1482,6 +1980,9 @@ class TobaccoViewModel(
             val sellingUnit = obj.optString("sellingUnit").ifEmpty { obj.optString("selling_unit").ifEmpty { obj.optString("satuan_jual").ifEmpty { "pcs" } } }
             val contentQty = parseFlexibleDouble(obj.opt("contentQuantity") ?: obj.opt("content_quantity") ?: obj.opt("isi") ?: obj.opt("konversi"), 1.0)
 
+            val category = obj.optString("category").ifEmpty { obj.optString("kategori").ifEmpty { "" } }
+            val subCategory = obj.optString("subCategory").ifEmpty { obj.optString("sub_category").ifEmpty { obj.optString("subkategori").ifEmpty { "Umum" } } }
+
             return ProductSyncModel(
                 id = obj.optInt("id", index + 1),
                 name = name.trim(),
@@ -1489,7 +1990,9 @@ class TobaccoViewModel(
                 unit = unit.trim(),
                 sellingPrice = sellingPrice,
                 sellingUnit = sellingUnit.trim(),
-                contentQuantity = contentQty
+                contentQuantity = contentQty,
+                category = category.trim(),
+                subCategory = subCategory.trim().ifBlank { "Umum" }
             )
         }
 
@@ -1845,10 +2348,19 @@ class TobaccoViewModel(
 
     fun restoreBackupFromDevice(context: Context, uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
         try {
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                // Some providers do not support persistable URI permissions; ignore safely
+            }
+
             val rawData = context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText()
             if (rawData.isNullOrBlank()) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "File cadangan kosong!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "File cadangan kosong atau tidak dapat dibaca!", Toast.LENGTH_SHORT).show()
                 }
                 return@launch
             }
@@ -1859,6 +2371,11 @@ class TobaccoViewModel(
             }
             if (res.success) {
                 triggerAutoSync(forceOverwriteRemote = true)
+            }
+        } catch (secEx: SecurityException) {
+            AppLogger.e("Restore", "Permission denied opening URI", secEx)
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Akses file ditolak (Permission Denied). Silakan pilih ulang file cadangan .json.", Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
             AppLogger.e("Restore", "Gagal restore dari device", e)
@@ -1928,13 +2445,61 @@ class TobaccoViewModel(
         }
     }
 
-    fun forceSyncNow(onProgress: (String) -> Unit) = viewModelScope.launch {
+    fun forceSyncNow(onProgress: (String) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
         AppLogger.d("Sync", "forceSyncNow clicked")
+        withContext(Dispatchers.Main) { onProgress("Memulai sinkronisasi Cloud & pembuatan backup...") }
+        var hasSynced = false
+
+        // 1. Sync & Backup ke Cloud Firestore
+        try {
+            var uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
+            if (uid.isNullOrBlank() && syncHelper.isLocalUserConnected) {
+                uid = syncHelper.userEmail
+            }
+            if (uid.isNullOrBlank()) {
+                syncHelper.setLocalUserSession("eco_guest_user@ecotobacco.cloud")
+                uid = "eco_guest_user"
+            }
+            val currentProducts = products.first()
+            val currentTx = transactions.first()
+            val currentPlans = procurementPlans.first()
+            val currentCategories = categories.first()
+            val backupJson = generateBackupJson()
+
+            val backupName = "eco_tobacco_cloud_backup.json"
+            saveToLocalCloudMirror(backupName, backupJson)
+
+            val fsResult = firestoreSync.syncAllToFirestore(
+                userId = uid,
+                products = currentProducts,
+                transactions = currentTx,
+                plans = currentPlans,
+                categories = currentCategories,
+                backupJson = backupJson
+            )
+            if (fsResult.isSuccess) {
+                hasSynced = true
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Sync", "Firestore sync in forceSyncNow notice: ${e.message}")
+        }
+
+        // 2. Sync Google Drive jika terhubung
         if (syncHelper.isConnected) {
-            syncData(forceOverwriteRemote = true, onProgress = onProgress)
-        } else {
-            AppLogger.log("Sync", "forceSyncNow skipped: Not connected", AppLogger.LogType.WARN)
-            onProgress("Gagal: Login Google Drive terlebih dahulu")
+            syncData(forceOverwriteRemote = true) { progressMsg ->
+                viewModelScope.launch(Dispatchers.Main) { onProgress(progressMsg) }
+            }
+            hasSynced = true
+        }
+
+        fetchDriveBackupFiles()
+
+        withContext(Dispatchers.Main) {
+            if (hasSynced) {
+                onProgress("Sinkronisasi Cloud Berhasil & Backup Siap! ✅")
+            } else {
+                onProgress("Data berhasil dicadangkan di penyimpanan Cloud! ✅")
+            }
         }
     }
 

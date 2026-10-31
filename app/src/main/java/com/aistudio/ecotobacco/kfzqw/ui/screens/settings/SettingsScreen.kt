@@ -63,6 +63,19 @@ import androidx.compose.material.icons.filled.RoundedCorner
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Visibility
+import android.content.ClipData
+import android.content.ClipboardManager
+import com.aistudio.ecotobacco.kfzqw.ui.components.CloudSyncStatusBanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -94,8 +107,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -104,6 +119,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aistudio.ecotobacco.kfzqw.data.remote.DriveBackupFile
 import com.aistudio.ecotobacco.kfzqw.data.remote.SyncStatus
+import com.aistudio.ecotobacco.kfzqw.data.remote.InAppUpdateState
+import com.aistudio.ecotobacco.kfzqw.data.remote.GitHubReleaseInfo
 import com.aistudio.ecotobacco.kfzqw.ui.Routes
 import com.aistudio.ecotobacco.kfzqw.ui.components.ThemeOptionItem
 import com.aistudio.ecotobacco.kfzqw.ui.theme.LocalUiConfig
@@ -131,8 +148,11 @@ fun SettingsScreen(
     val firestoreSyncProgress by viewModel.firestoreSyncProgress.collectAsState()
     val firestoreLastSync by viewModel.firestoreLastSync.collectAsState()
     val firestoreMessage by viewModel.firestoreMessage.collectAsState()
+    val updateState by viewModel.updateState.collectAsState()
 
     var isAutoSync by remember { mutableStateOf(viewModel.syncHelper.isAutoSyncEnabled) }
+    var showRepoSettingsDialog by remember { mutableStateOf(false) }
+    var repoSettingInput by remember { mutableStateOf(viewModel.getGitHubRepo()) }
     val autoBackupInfo by viewModel.autoBackupInfo.collectAsState()
     var showRestoreAutoBackupDialog by remember { mutableStateOf(false) }
     var isManualBackupInProgress by remember { mutableStateOf(false) }
@@ -212,518 +232,474 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
 
-            // --- SECTION 1: SATU PINTU CLOUD & GOOGLE DRIVE BACKUP ---
-            PremiumSettingSection(title = "Cloud & Google Drive Synchronization") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        val isConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null) || viewModel.syncHelper.isLocalUserConnected
-                        val accountTitle = if (isConnected) {
-                            viewModel.syncHelper.userEmail ?: firebaseUser?.displayName ?: firebaseUser?.email ?: "Akun Terhubung"
-                        } else "Belum Terhubung ke Cloud"
+            // --- SECTION 1: CLOUD & WEB DASHBOARD SYNCHRONIZATION ---
+            PremiumSettingSection(title = "Cloud & Web Dashboard Sync") {
+                Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    CloudSyncStatusBanner(
+                        viewModel = viewModel,
+                        onNavigateToSettings = null
+                    )
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(
-                                shape = RoundedCornerShape(14.dp),
-                                color = if (isConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
-                                modifier = Modifier.size(48.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = if (isConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
-                                        contentDescription = null,
-                                        tint = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(26.dp)
-                                    )
-                                }
-                            }
-                            Spacer(Modifier.width(16.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (isConnected) "Akun Cloud Aktif" else "Cadangkan Data ke Cloud",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = accountTitle,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                    maxLines = 1
-                                )
-                            }
-                        }
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp)) {
+                            val isConnected = (syncStatus != SyncStatus.DISCONNECTED) || (firebaseUser != null) || viewModel.syncHelper.isLocalUserConnected
+                            val accountTitle = if (isConnected) {
+                                viewModel.syncHelper.userEmail ?: firebaseUser?.displayName ?: firebaseUser?.email ?: "Akun Terhubung"
+                            } else "Belum Terhubung ke Cloud"
 
-                        Spacer(Modifier.height(18.dp))
-
-                        if (!isConnected) {
-                            // Primary: Masuk dengan Email / Akun Cloud
-                            Button(
-                                onClick = {
-                                    showEmailLoginDialog = true
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-                            ) {
-                                Icon(Icons.Default.CloudSync, null, modifier = Modifier.size(20.dp))
-                                Spacer(Modifier.width(8.dp))
-                                Text("Masuk dengan Email / Akun Cloud", fontWeight = FontWeight.Bold)
-                            }
-
-                            Spacer(Modifier.height(10.dp))
-
-                            // Secondary: Masuk Cepat Cloud / Mode Tamu (Sangat cepat tanpa browser / untuk testing langsung)
-                            OutlinedButton(
-                                onClick = {
-                                    Toast.makeText(context, "Menghubungkan ke Cloud Firestore...", Toast.LENGTH_SHORT).show()
-                                    viewModel.signInAnonymously { success, msg ->
-                                        Toast.makeText(context, msg ?: if (success) "Terhubung ke Cloud!" else "Gagal", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                            ) {
-                                Icon(Icons.Default.FlashOn, null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Masuk Cepat Cloud (Mode Tamu / Instan)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            }
-                        } else {
-                            // SINKRONISASI 1 PINTU
-                            val isSyncingActive = isFirestoreSyncing || (syncStatus == SyncStatus.SYNCING)
-
-                            if (isSyncingActive) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
                                 Surface(
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                                    modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isConnected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant,
+                                    modifier = Modifier.size(44.dp)
                                 ) {
-                                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(16.dp),
-                                                    strokeWidth = 2.dp,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                Text(
-                                                    text = firestoreMessage ?: "Sedang menyinkronkan data stok...",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    fontWeight = FontWeight.Medium,
-                                                    color = MaterialTheme.colorScheme.onSurface
-                                                )
-                                            }
-                                            Text(
-                                                text = "${(firestoreSyncProgress * 100).toInt()}%",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                        LinearProgressIndicator(
-                                            progress = { firestoreSyncProgress.coerceIn(0.05f, 1.0f) },
-                                            modifier = Modifier.fillMaxWidth().height(6.dp),
-                                            color = MaterialTheme.colorScheme.primary,
-                                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = if (isConnected) Icons.Default.CloudDone else Icons.Default.CloudOff,
+                                            contentDescription = null,
+                                            tint = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(24.dp)
                                         )
                                     }
                                 }
+                                Spacer(Modifier.width(14.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = if (isConnected) "Akun Cloud Aktif" else "Cadangkan Data ke Cloud",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = accountTitle,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
+                                    )
+                                }
                             }
 
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedButtonPremium(
-                                    text = if (isSyncingActive) "Menyimpan..." else "Sinkron Sekarang",
-                                    icon = Icons.Default.Sync,
-                                    modifier = Modifier.weight(1f),
-                                    onClick = { 
-                                        viewModel.forceSyncNow { status ->
-                                            (context as? Activity)?.runOnUiThread { Toast.makeText(context, status, Toast.LENGTH_SHORT).show() }
-                                        }
-                                        viewModel.syncFirestore()
-                                    }
-                                )
-                                OutlinedButtonPremium(
-                                    text = "Pulihkan Cloud",
-                                    icon = Icons.Default.Download,
-                                    modifier = Modifier.weight(1f),
-                                    onClick = {
-                                        showRestorePicker = true
-                                    }
-                                )
-                            }
-                            
                             Spacer(Modifier.height(14.dp))
-                            
-                            // Auto Sync Toggle Row
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(16.dp))
-                                    .padding(horizontal = 16.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text("Sinkronisasi Otomatis", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                                    Text("Simpan data & pengaturan setiap ada perubahan", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                            if (!isConnected) {
+                                Button(
+                                    onClick = { showEmailLoginDialog = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                                ) {
+                                    Icon(Icons.Default.CloudSync, null, modifier = Modifier.size(18.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Masuk dengan Email / Akun Cloud", fontWeight = FontWeight.Bold)
                                 }
-                                Switch(
-                                    checked = isAutoSync, 
-                                    onCheckedChange = { isAutoSync = it; viewModel.syncHelper.isAutoSyncEnabled = it },
-                                    colors = SwitchDefaults.colors(checkedThumbColor = MaterialTheme.colorScheme.primary)
-                                )
+                                Spacer(Modifier.height(8.dp))
+                                OutlinedButton(
+                                    onClick = {
+                                        Toast.makeText(context, "Menghubungkan ke Cloud Firestore...", Toast.LENGTH_SHORT).show()
+                                        viewModel.signInAnonymously { success, msg ->
+                                            Toast.makeText(context, msg ?: if (success) "Terhubung ke Cloud!" else "Gagal", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    Icon(Icons.Default.FlashOn, null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                                    Spacer(Modifier.width(8.dp))
+                                    Text("Masuk Cepat Cloud (Mode Tamu / Instan)", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                                }
+                            } else {
+                                val isSyncingActive = isFirestoreSyncing || (syncStatus == SyncStatus.SYNCING)
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            if (!isManualBackupInProgress) {
+                                                isManualBackupInProgress = true
+                                                viewModel.createManualCloudBackup { _, msg ->
+                                                    isManualBackupInProgress = false
+                                                    (context as? Activity)?.runOnUiThread { Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() }
+                                                }
+                                            }
+                                        },
+                                        enabled = !isManualBackupInProgress,
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(1f),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(2.dp))
+                                        Text("Cadang", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = { showRestorePicker = true },
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(1.3f),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(2.dp))
+                                        Text("Pilih Backup", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            viewModel.forceSyncNow { status ->
+                                                (context as? Activity)?.runOnUiThread { Toast.makeText(context, status, Toast.LENGTH_SHORT).show() }
+                                            }
+                                            viewModel.syncFirestore()
+                                        },
+                                        enabled = !isSyncingActive,
+                                        shape = RoundedCornerShape(10.dp),
+                                        modifier = Modifier.weight(0.9f),
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(4.dp)
+                                    ) {
+                                        Icon(Icons.Default.Sync, null, modifier = Modifier.size(14.dp))
+                                        Spacer(Modifier.width(2.dp))
+                                        Text("Sinkron", fontSize = 10.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                                    }
+                                }
+
+                                Spacer(Modifier.height(10.dp))
+
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text("Sinkronisasi Otomatis", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                                        Text("Simpan perubahan secara real-time", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Switch(
+                                        checked = isAutoSync,
+                                        onCheckedChange = { isAutoSync = it; viewModel.syncHelper.isAutoSyncEnabled = it }
+                                    )
+                                }
+
+                                TextButton(
+                                    onClick = { showDisconnectDialog = true },
+                                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                                ) {
+                                    Text("Putuskan Hubungan Akun", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelMedium)
+                                }
                             }
-                            
-                            TextButton(
-                                onClick = { showDisconnectDialog = true },
-                                modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
-                            ) {
-                                Text("Putuskan Hubungan Akun", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+
+                    // Web Dashboard Sync Card
+                    val webDashboardUrl = "https://ais-dev-4rgjgocgwaob6fy6gpujpr-863851997609.asia-east1.run.app"
+                    val isWebSyncing by viewModel.isWebSyncing.collectAsState()
+
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Computer, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                    }
+                                }
+                                Spacer(Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Web Dashboard Laptop & PC", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                    Text("Kelola nota & stok via browser laptop", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { viewModel.syncToWebDashboard { _, msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() } },
+                                    enabled = !isWebSyncing,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
+                                {
+                                    Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Kirim ke Web", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                                OutlinedButton(
+                                    onClick = { viewModel.pullFromWebDashboard { _, msg -> Toast.makeText(context, msg, Toast.LENGTH_SHORT).show() } },
+                                    enabled = !isWebSyncing,
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
+                                {
+                                    Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Tarik dari Web", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        clipboard.setPrimaryClip(ClipData.newPlainText("Link", webDashboardUrl))
+                                        Toast.makeText(context, "Link web disalin!", Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Salin Link", fontSize = 11.sp)
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        try { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webDashboardUrl))) } catch (_: Exception) {}
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.OpenInBrowser, null, modifier = Modifier.size(14.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Buka Web", fontSize = 11.sp)
+                                }
                             }
                         }
                     }
                 }
             }
 
-            // --- SECTION 3: PERSONALISASI UI (Gasss!) ---
+            // --- SECTION 2: TAMPILAN, PERSONALISASI UI & WIDGET ---
             val fontSizeScale by viewModel.fontSizeScale.collectAsState()
             val paddingScale by viewModel.paddingScale.collectAsState()
             val buttonHeight by viewModel.buttonHeight.collectAsState()
             val cornerRadius by viewModel.cornerRadius.collectAsState()
-            val customTextColor by viewModel.customTextColor.collectAsState()
+            val themeMode by viewModel.themeMode.collectAsState()
 
-            PremiumSettingSection(title = "Personalisasi Antarmuka (UI)") {
+            PremiumSettingSection(title = "Tampilan, Personalisasi & Widget") {
                 PremiumCardGroup {
                     Column(
-                        modifier = Modifier.padding(16.dp.scaled),
-                        verticalArrangement = Arrangement.spacedBy(14.dp.scaled)
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        // Font Size Slider
-                        val fontPercent = (fontSizeScale * 100).toInt()
-                        UiSliderItem(
-                            label = "Ukuran Font",
-                            value = fontSizeScale,
-                            displayValue = "$fontPercent%",
-                            icon = Icons.Default.TextFields,
-                            valueRange = 0.8f..1.5f,
-                            onValueChange = { viewModel.setFontSizeScale(it) }
-                        )
-                        
-                        // Padding Scale Slider
-                        val padPercent = (paddingScale * 100).toInt()
-                        UiSliderItem(
-                            label = "Jarak / Padding",
-                            value = paddingScale,
-                            displayValue = "$padPercent%",
-                            icon = Icons.Default.SpaceDashboard,
-                            valueRange = 0.5f..1.8f,
-                            onValueChange = { viewModel.setPaddingScale(it) }
-                        )
-
-                        // Button Height Slider
-                        UiSliderItem(
-                            label = "Tinggi Tombol",
-                            value = buttonHeight.toFloat(),
-                            displayValue = "${buttonHeight}dp",
-                            icon = Icons.Default.Height,
-                            valueRange = 40f..80f,
-                            onValueChange = { viewModel.setButtonHeight(it.toInt()) }
-                        )
-
-                        // Corner Radius Slider
-                        UiSliderItem(
-                            label = "Kebulatan Sudut",
-                            value = cornerRadius.toFloat(),
-                            displayValue = "${cornerRadius}dp",
-                            icon = Icons.Default.RoundedCorner,
-                            valueRange = 0f..32f,
-                            onValueChange = { viewModel.setCornerRadius(it.toInt()) }
-                        )
+                        Text("Mode Tampilan", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val modes = listOf(
+                                Triple("SYSTEM", "Otomatis", Icons.Default.SettingsSuggest),
+                                Triple("LIGHT", "Terang", Icons.Default.LightMode),
+                                Triple("DARK", "Gelap", Icons.Default.DarkMode),
+                                Triple("CYBER", "Cyber", Icons.Default.Bolt)
+                            )
+                            for ((modeKey, label, icon) in modes) {
+                                val isSelected = themeMode == modeKey
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { viewModel.setThemeMode(modeKey) },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                    border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.spacedBy(3.dp)
+                                    ) {
+                                        Icon(icon, label, tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, fontSize = 10.sp, color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
+                                    }
+                                }
+                            }
+                        }
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                        // Warna Teks & Reset Button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp.scaled)
-                        ) {
+                        UiSliderItem(
+                            label = "Ukuran Huruf / Font",
+                            value = fontSizeScale,
+                            displayValue = "${(fontSizeScale * 100).toInt()}%",
+                            icon = Icons.Default.TextFields,
+                            valueRange = 0.8f..1.3f,
+                            presets = listOf(0.9f to "Kecil", 1.0f to "Normal", 1.2f to "Besar"),
+                            onValueChange = { viewModel.setFontSizeScale(it) }
+                        )
+
+                        UiSliderItem(
+                            label = "Kebulatan Sudut (Corner Radius)",
+                            value = cornerRadius.toFloat(),
+                            displayValue = "${cornerRadius}dp",
+                            icon = Icons.Default.RoundedCorner,
+                            valueRange = 0f..28f,
+                            presets = listOf(4f to "Kotak", 14f to "Standar", 24f to "Bulat"),
+                            onValueChange = { viewModel.setCornerRadius(it.toInt()) }
+                        )
+
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButtonPremium(
                                 text = "Warna Teks",
                                 icon = Icons.Default.Palette,
                                 modifier = Modifier.weight(1f),
                                 onClick = { showTextColorPicker = true }
                             )
-
                             OutlinedButtonPremium(
-                                text = "Reset Default",
+                                text = "Reset UI",
                                 icon = Icons.Default.RestartAlt,
                                 modifier = Modifier.weight(1f),
-                                onClick = { 
-                                    viewModel.resetUiCustomization()
-                                    Toast.makeText(context, "Tampilan UI dikembalikan ke bawaan", Toast.LENGTH_SHORT).show()
-                                }
+                                onClick = { viewModel.resetUiCustomization(); Toast.makeText(context, "UI dikembalikan ke default", Toast.LENGTH_SHORT).show() }
                             )
                         }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+
+                        PremiumSettingItem(
+                            title = "Pasang Widget ke Layar Utama",
+                            subtitle = "Pantau stok & ringkasan dari home screen",
+                            icon = Icons.Default.Widgets,
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    val appWidgetManager = context.getSystemService(AppWidgetManager::class.java)
+                                    val myProvider = ComponentName(context, TobaccoAppWidgetProvider::class.java)
+                                    if (appWidgetManager != null && appWidgetManager.isRequestPinAppWidgetSupported) {
+                                        appWidgetManager.requestPinAppWidget(myProvider, null, null)
+                                    } else {
+                                        Toast.makeText(context, "Tekan lama area kosong layar utama HP Anda > pilih Widget", Toast.LENGTH_LONG).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "Tekan lama area kosong layar utama HP Anda > pilih Widget", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        )
                     }
                 }
             }
 
-            // --- SECTION 4: DATA LOKAL & CADANGAN OTOMATIS ---
-            PremiumSettingSection(title = "Local Data Management & Auto Backup") {
-                // Card 1: Status Cadangan Otomatis Internal
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(modifier = Modifier.padding(18.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                Surface(
-                                    shape = RoundedCornerShape(12.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer,
-                                    modifier = Modifier.size(42.dp)
-                                ) {
+            // --- SECTION 3: PENYIMPANAN & CADANGAN DATA ---
+            PremiumSettingSection(title = "Penyimpanan & Cadangan Data") {
+                PremiumCardGroup {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Surface(shape = RoundedCornerShape(10.dp), color = MaterialTheme.colorScheme.primaryContainer, modifier = Modifier.size(36.dp)) {
                                     Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.Save,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(24.dp)
-                                        )
+                                        Icon(Icons.Default.Save, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
                                     }
                                 }
                                 Column {
-                                    Text(
-                                        text = "Cadangan Otomatis",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = "Penyimpanan Aman Internal",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                            Surface(
-                                shape = RoundedCornerShape(20.dp),
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Text(
-                                        text = "Aktif Otomatis",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                    Text("Cadangan Otomatis Internal", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                                    val lastTimeStr = autoBackupInfo?.lastBackupTime?.takeIf { it > 0 }?.let { SimpleDateFormat("dd MMM HH:mm", Locale.getDefault()).format(Date(it)) } ?: "Belum pernah"
+                                    Text("Terakhir: $lastTimeStr (${autoBackupInfo?.fileSizeFormatted ?: "0 B"})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
 
-                        Spacer(Modifier.height(14.dp))
-
-                        // Detail Box
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                val lastTimeFormatted = autoBackupInfo?.lastBackupTime?.takeIf { it > 0 }?.let {
-                                    SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date(it))
-                                } ?: "Belum pernah dicadangkan"
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Terakhir Dicadangkan:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(lastTimeFormatted, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text("Ukuran File:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    Text(autoBackupInfo?.fileSizeFormatted ?: "0 B", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
-                                }
-                                if ((autoBackupInfo?.productCount ?: 0) > 0 || (autoBackupInfo?.transactionCount ?: 0) > 0 || (autoBackupInfo?.planCount ?: 0) > 0) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Isi Data:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(
-                                            "${autoBackupInfo?.productCount ?: 0} Produk • ${autoBackupInfo?.transactionCount ?: 0} Transaksi",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
-                                if (!autoBackupInfo?.filePath.isNullOrBlank()) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text("Lokasi Berkas:", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        Text(
-                                            autoBackupInfo?.filePath ?: "",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            fontWeight = FontWeight.Normal,
-                                            maxLines = 1,
-                                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                                            modifier = Modifier.padding(start = 8.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(Modifier.height(14.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             OutlinedButtonPremium(
-                                text = if (isManualBackupInProgress) "Menyimpan..." else "Cadangkan Sekarang",
+                                text = "Cadangkan",
                                 icon = Icons.Default.Save,
                                 modifier = Modifier.weight(1f),
                                 onClick = {
                                     isManualBackupInProgress = true
-                                    viewModel.performManualAutoBackup(context) { success, msg ->
+                                    viewModel.performManualAutoBackup(context) { _, msg ->
                                         isManualBackupInProgress = false
                                         Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
                                     }
                                 }
                             )
-                            val hasBackup = (autoBackupInfo?.lastBackupTime ?: 0L) > 0L
                             OutlinedButtonPremium(
-                                text = "Pulihkan Auto Backup",
+                                text = "Pulihkan",
                                 icon = Icons.Default.Download,
                                 modifier = Modifier.weight(1f),
                                 onClick = {
-                                    if (hasBackup) {
-                                        showRestoreAutoBackupDialog = true
-                                    } else {
-                                        Toast.makeText(context, "Belum ada file cadangan otomatis untuk dipulihkan", Toast.LENGTH_SHORT).show()
-                                    }
+                                    if ((autoBackupInfo?.lastBackupTime ?: 0L) > 0L) showRestoreAutoBackupDialog = true
+                                    else Toast.makeText(context, "Belum ada file cadangan otomatis", Toast.LENGTH_SHORT).show()
                                 }
                             )
                         }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        PremiumSettingItem(
+                            title = "Ekspor / Impor File JSON",
+                            subtitle = "Simpan atau muat file .json cadangan eksternal",
+                            icon = Icons.Default.Upload,
+                            onClick = {
+                                val fileName = "eco_tobacco_backup_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}.json"
+                                createBackupLauncher.launch(fileName)
+                            }
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        PremiumSettingItem(
+                            title = "Bersihkan Cache Installer APK",
+                            subtitle = "Hapus file APK sisa update agar memori HP lega",
+                            icon = Icons.Default.Delete,
+                            onClick = {
+                                viewModel.cleanupUpdateFilesNow()
+                                Toast.makeText(context, "Cache file installer APK berhasil dibersihkan.", Toast.LENGTH_SHORT).show()
+                            }
+                        )
                     }
                 }
-
-                Spacer(Modifier.height(10.dp))
-
-                PremiumCardGroup {
-                    PremiumSettingItem(
-                        title = "Ekspor File Cadangan (.json)",
-                        subtitle = "Simpan berkas cadangan ke folder Downloads atau Drive eksternal",
-                        icon = Icons.Default.Upload,
-                        onClick = { 
-                            val fileName = "eco_tobacco_backup_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}.json"
-                            createBackupLauncher.launch(fileName)
-                        }
-                    )
-                    HorizontalDivider(Modifier.padding(horizontal = 16.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    PremiumSettingItem(
-                        title = "Impor File Cadangan (.json)",
-                        subtitle = "Buka dan pulihkan data dari file .json eksternal",
-                        icon = Icons.Default.UploadFile,
-                        onClick = { restoreLauncher.launch(arrayOf("application/json", "*/*")) }
-                    )
-                }
             }
 
-            // --- SECTION: WIDGET LAYAR UTAMA ---
-            PremiumSettingSection(title = "Widget Layar Utama") {
+            // --- SECTION 4: TENTANG, PEMBARUAN GITHUB & KEAMANAN ---
+            PremiumSettingSection(title = "Tentang, Pembaruan & Keamanan") {
                 PremiumCardGroup {
-                    PremiumSettingItem(
-                        title = "Pasang Widget ke Layar Utama",
-                        subtitle = "Pantau stok, transaksi & rencana langsung dari home screen",
-                        icon = Icons.Default.Widgets,
-                        onClick = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                val appWidgetManager = context.getSystemService(AppWidgetManager::class.java)
-                                val myProvider = ComponentName(context, TobaccoAppWidgetProvider::class.java)
-                                if (appWidgetManager != null && appWidgetManager.isRequestPinAppWidgetSupported) {
-                                    appWidgetManager.requestPinAppWidget(myProvider, null, null)
-                                    Toast.makeText(context, "Membuka permintaan pasang widget...", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Tekan lama area kosong layar utama HP Anda > pilih Widget > Eco Tobacco", Toast.LENGTH_LONG).show()
-                                }
-                            } else {
-                                Toast.makeText(context, "Tekan lama area kosong layar utama HP Anda > pilih Widget > Eco Tobacco", Toast.LENGTH_LONG).show()
-                            }
-                        }
-                    )
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        PremiumSettingItem(
+                            title = "Eco Tobacco v${Routes.APP_VERSION}",
+                            subtitle = "Ketuk untuk melihat catatan rilis (What's New)",
+                            icon = Icons.Default.Info,
+                            onClick = { showWhatsNew = true }
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        PremiumSettingItem(
+                            title = "Cek Pembaruan GitHub",
+                            subtitle = "In-App Updater & Pembersih Installer Otomatis",
+                            icon = Icons.Default.CloudDownload,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            onClick = { viewModel.checkForGitHubUpdate(currentVersion = Routes.APP_VERSION, silent = false) }
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        PremiumSettingItem(
+                            title = "Target Repository GitHub",
+                            subtitle = viewModel.getGitHubRepo(),
+                            icon = Icons.Default.Computer,
+                            onClick = { repoSettingInput = viewModel.getGitHubRepo(); showRepoSettingsDialog = true }
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        PremiumSettingItem(
+                            title = "Reset Semua Data (Danger Zone)",
+                            subtitle = "Hapus permanen seluruh data lokal aplikasi",
+                            icon = Icons.Default.DeleteForever,
+                            iconColor = MaterialTheme.colorScheme.error,
+                            textColor = MaterialTheme.colorScheme.error,
+                            onClick = { showResetDialog = true }
+                        )
+                    }
                 }
             }
-
-            // --- SECTION 4: INFORMASI & TENTANG ---
-            PremiumSettingSection(title = "About & Info") {
-                PremiumCardGroup {
-                    PremiumSettingItem(
-                        title = "About Eco Tobacco",
-                        subtitle = "Version v${Routes.APP_VERSION}",
-                        icon = Icons.Default.Info,
-                        onClick = { showWhatsNew = true }
-                    )
-                }
-            }
-
-            // --- SECTION 5: DANGER ZONE ---
-            PremiumSettingSection(title = "Danger Zone") {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.1f)),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
-                ) {
-                    PremiumSettingItem(
-                        title = "Reset All Data",
-                        subtitle = "Permanently delete everything",
-                        icon = Icons.Default.DeleteForever,
-                        iconColor = MaterialTheme.colorScheme.error,
-                        textColor = MaterialTheme.colorScheme.error,
-                        onClick = { showResetDialog = true }
-                    )
-                }
             }
             
             // Footer
@@ -843,6 +819,361 @@ fun SettingsScreen(
         )
     }
 
+    // --- DIALOG: TARGET REPO CONFIGURATION ---
+    if (showRepoSettingsDialog) {
+        AlertDialog(
+            onDismissRequest = { showRepoSettingsDialog = false },
+            title = { Text("Pengaturan GitHub Update", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Masukkan target GitHub repository untuk auto-check rilis terbaru (format: owner/repo):",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                    OutlinedTextField(
+                        value = repoSettingInput,
+                        onValueChange = { repoSettingInput = it },
+                        label = { Text("Repository Target") },
+                        placeholder = { Text("ekofebriarianto/eco-tobacco") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Auto-cek saat aplikasi dibuka", style = MaterialTheme.typography.bodyMedium)
+                        Switch(
+                            checked = viewModel.isAutoCheckUpdateEnabled(),
+                            onCheckedChange = { viewModel.setAutoCheckUpdateEnabled(it) }
+                        )
+                    }
+                    Text(
+                        "File installer APK yang telah diunduh akan otomatis dibersihkan setelah dipasang.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (repoSettingInput.isNotBlank()) {
+                        viewModel.setGitHubRepo(repoSettingInput)
+                    }
+                    showRepoSettingsDialog = false
+                    Toast.makeText(context, "Target repository disimpan.", Toast.LENGTH_SHORT).show()
+                }) {
+                    Text("Simpan")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRepoSettingsDialog = false }) {
+                    Text("Batal")
+                }
+            },
+            shape = RoundedCornerShape(28.dp)
+        )
+    }
+
+    // --- IN-APP UPDATE STATE DIALOGS ---
+    when (val state = updateState) {
+        is InAppUpdateState.Checking -> {
+            AlertDialog(
+                onDismissRequest = { /* Jangan dismiss saat mengecek */ },
+                title = { Text("Memeriksa Pembaruan...", fontWeight = FontWeight.Bold) },
+                text = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
+                        Text("Menghubungi GitHub Releases API...")
+                    }
+                },
+                confirmButton = {},
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+        is InAppUpdateState.UpdateAvailable -> {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissUpdateDialog() },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Icon(Icons.Default.CloudDownload, null, tint = MaterialTheme.colorScheme.primary)
+                        Text("Pembaruan Tersedia!", fontWeight = FontWeight.ExtraBold)
+                    }
+                },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = "${state.release.tagName} • ${state.release.title}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        if (state.release.apkSize > 0L) {
+                            Text(
+                                text = "Ukuran file: ${state.release.apkSize / (1024 * 1024)} MB",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Text(
+                            text = "Catatan Rilis:\n${state.release.releaseNotes}",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 6
+                        )
+                        HorizontalDivider()
+                        Text(
+                            text = "File akan diunduh langsung di dalam aplikasi dan otomatis dihapus setelah instalasi selesai.",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = { viewModel.downloadAndInstallUpdate(state.release) }) {
+                        Text("Unduh & Pasang Sekarang")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
+                        Text("Nanti Saja")
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+        is InAppUpdateState.Downloading -> {
+            val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "downloadAnim")
+            val bounceY by infiniteTransition.animateFloat(
+                initialValue = -8f,
+                targetValue = 6f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    animation = androidx.compose.animation.core.tween(750, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+                ),
+                label = "bounce"
+            )
+            val glowAlpha by infiniteTransition.animateFloat(
+                initialValue = 0.35f,
+                targetValue = 0.85f,
+                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                    animation = androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.LinearEasing),
+                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+                ),
+                label = "glow"
+            )
+            val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = if (state.totalBytes > 0) (state.progressPercent / 100f).coerceIn(0f, 1f) else 0f,
+                animationSpec = androidx.compose.animation.core.tween(250),
+                label = "progress"
+            )
+            val mbDownloaded = state.bytesDownloaded / (1024f * 1024f)
+            val mbTotal = state.totalBytes / (1024f * 1024f)
+            val mbText = if (state.totalBytes > 0) String.format("%.1f MB / %.1f MB", mbDownloaded, mbTotal) else String.format("%.1f MB", mbDownloaded)
+
+            AlertDialog(
+                onDismissRequest = { /* Dipertahankan hingga selesai unduh */ },
+                title = null,
+                text = {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // Animated Hero Pulsing & Bouncing
+                        Box(
+                            contentAlignment = Alignment.Center,
+                            modifier = Modifier.size(80.dp)
+                        ) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.25f),
+                                modifier = Modifier.size(80.dp)
+                            ) {}
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
+                                modifier = Modifier.size(62.dp)
+                            ) {}
+                            Icon(
+                                imageVector = Icons.Default.CloudDownload,
+                                contentDescription = "Downloading",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .androidx.compose.ui.draw.offset(y = bounceY.dp)
+                            )
+                        }
+
+                        // Title & Status
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                "Mengunduh Pembaruan...",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                "Proses unduh in-app berlangsung di dalam aplikasi",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        // Animated Progress Bar & Percent
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(14.dp),
+                                        strokeWidth = 2.dp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        "${state.progressPercent}% Selesai",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Text(
+                                    mbText,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            LinearProgressIndicator(
+                                progress = { animatedProgress },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(10.dp)
+                                    .clip(RoundedCornerShape(5.dp)),
+                                color = MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        }
+
+                        // Auto-Cleanup Safety Banner (Pembersih Berkas Otomatis)
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.DeleteForever,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(
+                                        "Pembersihan Otomatis Aktif",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Text(
+                                        "Berkas installer APK otomatis dihapus segera setelah aplikasi dipasang agar memori HP tetap lega.",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                                        lineHeight = 14.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+        is InAppUpdateState.ReadyToInstall -> {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissUpdateDialog() },
+                title = { Text("Unduhan Selesai", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text("Pembaruan ${state.release.tagName} telah siap dipasang. Setelah instalasi, file APK installer ini akan otomatis dibersihkan agar penyimpanan HP tidak penuh.")
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.installDownloadedApk(state.apkFile)
+                        viewModel.dismissUpdateDialog()
+                    }) {
+                        Text("Pasang Sekarang")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
+                        Text("Tutup")
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+        is InAppUpdateState.UpToDate -> {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissUpdateDialog() },
+                title = { Text("Aplikasi Terkini", fontWeight = FontWeight.Bold) },
+                text = {
+                    Text("Aplikasi Eco Tobacco v${Routes.APP_VERSION} sudah menggunakan versi terbaru dari GitHub.")
+                },
+                confirmButton = {
+                    Button(onClick = { viewModel.dismissUpdateDialog() }) {
+                        Text("OK")
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+        is InAppUpdateState.Error -> {
+            AlertDialog(
+                onDismissRequest = { viewModel.dismissUpdateDialog() },
+                title = { Text("Info Pembaruan", fontWeight = FontWeight.Bold) },
+                text = { Text(state.message) },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.checkForGitHubUpdate(currentVersion = Routes.APP_VERSION, silent = false)
+                    }) {
+                        Text("Coba Lagi")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
+                        Text("Tutup")
+                    }
+                },
+                shape = RoundedCornerShape(24.dp)
+            )
+        }
+        is InAppUpdateState.Idle -> { /* Idle */ }
+    }
+
     if (showResetDialog) {
         AlertDialog(
             onDismissRequest = { showResetDialog = false },
@@ -920,8 +1251,8 @@ fun SettingsScreen(
             onDismiss = { showRestorePicker = false },
             onFileSelected = { file ->
                 showRestorePicker = false
-                viewModel.syncData(forceOverwriteRemote = false, fileId = file.id) { status ->
-                    (context as? Activity)?.runOnUiThread { Toast.makeText(context, status, Toast.LENGTH_SHORT).show() }
+                viewModel.restoreCloudBackup(file) { success, msg ->
+                    (context as? Activity)?.runOnUiThread { Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
                 }
             }
         )
@@ -970,26 +1301,30 @@ fun DriveBackupPicker(
     onFileSelected: (DriveBackupFile) -> Unit
 ) {
     val files by viewModel.driveBackupFiles.collectAsState()
-    var isLoading by remember { mutableStateOf(true) }
+    val isFetchingBackups by viewModel.isFetchingBackups.collectAsState()
     var fileToDelete by remember { mutableStateOf<DriveBackupFile?>(null) }
+    var fileToRestore by remember { mutableStateOf<DriveBackupFile?>(null) }
+    var isCreatingBackup by remember { mutableStateOf(false) }
+    var isRestoring by remember { mutableStateOf(false) }
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.fetchDriveBackupFiles()
-        isLoading = false
     }
 
+    // Modal konfirmasi hapus file backup
     if (fileToDelete != null) {
         AlertDialog(
             onDismissRequest = { fileToDelete = null },
-            title = { Text("Hapus Backup") },
-            text = { Text("Apakah Anda yakin ingin menghapus backup ini dari Google Drive? Tindakan ini tidak dapat dibatalkan.") },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Hapus Backup Cloud", fontWeight = FontWeight.ExtraBold) },
+            text = { Text("Apakah Anda yakin ingin menghapus file backup '${fileToDelete!!.name}'? Tindakan ini akan menghapus cadangan dari Cloud Firestore secara permanen.") },
             confirmButton = {
-                TextButton(
+                Button(
                     onClick = {
                         val file = fileToDelete!!
                         fileToDelete = null
-                        viewModel.deleteDriveBackupFile(file.id) { success ->
+                        viewModel.deleteDriveBackupFile(file) { success ->
                             (context as? Activity)?.runOnUiThread {
                                 if (success) {
                                     Toast.makeText(context, "Backup berhasil dihapus", Toast.LENGTH_SHORT).show()
@@ -999,40 +1334,257 @@ fun DriveBackupPicker(
                             }
                         }
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Text("Hapus")
+                    Text("Ya, Hapus", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onError)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { fileToDelete = null }) {
                     Text("Batal")
                 }
-            }
+            },
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
+
+    // Modal konfirmasi pulihkan (Restore) file backup terpilih
+    if (fileToRestore != null) {
+        val target = fileToRestore!!
+        AlertDialog(
+            onDismissRequest = { if (!isRestoring) fileToRestore = null },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.CloudDownload,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = { Text("Pulihkan Cadangan Cloud?", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "File: ${target.name}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "${target.itemCountText} • ${target.source}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = "Seluruh data stok, transaksi nota, rencana kulakan, dan pengaturan personalisasi antarmuka (UI) akan dipulihkan sesuai isi cadangan ini. Lanjutkan?",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isRestoring) {
+                        Spacer(Modifier.height(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                            Text("Sedang memulihkan data dari Cloud...", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isRestoring = true
+                        viewModel.restoreCloudBackup(target) { success, msg ->
+                            isRestoring = false
+                            fileToRestore = null
+                            (context as? Activity)?.runOnUiThread {
+                                Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                            }
+                            if (success) {
+                                onDismiss()
+                            }
+                        }
+                    },
+                    enabled = !isRestoring,
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Ya, Pulihkan Sekarang", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { fileToRestore = null },
+                    enabled = !isRestoring
+                ) {
+                    Text("Batal")
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
         )
     }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Pilih Backup Cloud", fontWeight = FontWeight.ExtraBold) },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.CloudSync, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                    Text("Pilih Backup Cloud", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
+                }
+                IconButton(
+                    onClick = { viewModel.fetchDriveBackupFiles() },
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Segarkan",
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
         text = {
             Column(
-                modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                modifier = Modifier.fillMaxWidth().heightIn(max = 520.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (isLoading) {
-                    CircularProgressIndicator(modifier = Modifier.padding(24.dp))
+                // Top Quick Action 1: Pulihkan Langsung dari Firestore
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        onDismiss()
+                        Toast.makeText(context, "Mengunduh data terbaru dari Cloud Firestore...", Toast.LENGTH_SHORT).show()
+                        viewModel.restoreFromFirestore { success, msg ->
+                            (context as? Activity)?.runOnUiThread { Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
+                        }
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.FlashOn, null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Pulihkan Cloud Langsung", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            Text("Unduh seluruh stok & transaksi terkini dari Firestore", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+
+                // Top Quick Action 2: Buat Cadangan Baru Sekarang
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth().clickable {
+                        if (!isCreatingBackup) {
+                            isCreatingBackup = true
+                            Toast.makeText(context, "Membuat file cadangan Cloud baru...", Toast.LENGTH_SHORT).show()
+                            viewModel.createManualCloudBackup { success, msg ->
+                                isCreatingBackup = false
+                                (context as? Activity)?.runOnUiThread { Toast.makeText(context, msg, Toast.LENGTH_LONG).show() }
+                            }
+                        }
+                    }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(Icons.Default.Save, null, tint = MaterialTheme.colorScheme.secondary, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(if (isCreatingBackup) "Menyimpan snapshot..." else "+ Buat Backup Cloud Baru Sekarang", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "Daftar File Backup Cloud (${files.size}):",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isFetchingBackups) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    }
+                }
+
+                if (isFetchingBackups && files.isEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CircularProgressIndicator(modifier = Modifier.size(32.dp))
+                            Text("Memuat file backup dari Cloud...", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
                 } else if (files.isEmpty()) {
-                    Text("Tidak ada file backup ditemukan.", modifier = Modifier.padding(24.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.25f),
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(28.dp))
+                            Text("Belum ada file backup di Cloud", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                            Text("Klik '+ Buat Backup Cloud Baru Sekarang' di atas untuk membuat file backup pertama Anda.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        }
+                    }
                 } else {
                     androidx.compose.foundation.lazy.LazyColumn(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
                         items(files.size) { index ->
                             val file = files[index]
                             PremiumBackupItem(
                                 file = file,
-                                onClick = { onFileSelected(file) },
+                                onClick = { fileToRestore = file },
                                 onDelete = { fileToDelete = file }
                             )
                         }
@@ -1041,7 +1593,11 @@ fun DriveBackupPicker(
             }
         },
         confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Batal") } },
+        dismissButton = {
+            TextButton(onClick = onDismiss, shape = RoundedCornerShape(12.dp)) {
+                Text("Tutup", fontWeight = FontWeight.Bold)
+            }
+        },
         shape = RoundedCornerShape(28.dp)
     )
 }
@@ -1068,26 +1624,66 @@ fun PremiumBackupItem(
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onClick() }
-                .padding(16.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(Icons.Default.CloudDone, null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text("Backup Database", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold)
-                Text(displayDate, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(42.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.CloudDone, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp))
+                }
             }
-            IconButton(onClick = onDelete) {
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = if (file.name.endsWith(".json")) file.name.substringBeforeLast(".json") else file.name,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+                    ) {
+                        Text(
+                            text = file.source,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                    Text(displayDate, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (file.itemCountText.isNotBlank()) {
+                    Text(
+                        text = file.itemCountText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(40.dp)
+            ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Hapus Backup",
-                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.7f)
+                    tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
+                    modifier = Modifier.size(20.dp)
                 )
             }
         }
@@ -1102,7 +1698,8 @@ fun UiSliderItem(
     icon: ImageVector,
     valueRange: ClosedFloatingPointRange<Float>,
     onValueChange: (Float) -> Unit,
-    steps: Int = 0
+    steps: Int = 0,
+    presets: List<Pair<Float, String>> = emptyList()
 ) {
     val uiConfig = LocalUiConfig.current
     Surface(
@@ -1115,7 +1712,7 @@ fun UiSliderItem(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 14.dp.scaled, vertical = 12.dp.scaled),
-            verticalArrangement = Arrangement.spacedBy(6.dp.scaled)
+            verticalArrangement = Arrangement.spacedBy(8.dp.scaled)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1148,7 +1745,7 @@ fun UiSliderItem(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                
+
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
@@ -1163,7 +1760,43 @@ fun UiSliderItem(
                     )
                 }
             }
-            
+
+            if (presets.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp.scaled)
+                ) {
+                    for ((presetVal, presetLabel) in presets) {
+                        val isSelected = kotlin.math.abs(value - presetVal) < 0.04f
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onValueChange(presetVal) },
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                            )
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(vertical = 5.dp.scaled),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = presetLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 10.sp.scaled,
+                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             Slider(
                 value = value,
                 onValueChange = onValueChange,

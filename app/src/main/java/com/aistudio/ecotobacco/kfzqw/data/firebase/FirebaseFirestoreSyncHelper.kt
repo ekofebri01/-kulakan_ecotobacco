@@ -9,6 +9,7 @@ import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProcurementPlanWithItem
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.TransactionEntity
 import com.aistudio.ecotobacco.kfzqw.data.repository.TobaccoRepository
+import com.aistudio.ecotobacco.kfzqw.data.remote.DriveBackupFile
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
@@ -19,6 +20,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+
+enum class FirestoreSyncStatus {
+    IDLE,
+    SYNCING,
+    SYNCED,
+    ERROR
+}
 
 data class FirestoreSyncResult(
     val uploadedProducts: Int,
@@ -31,7 +43,8 @@ data class FirestoreRestoreResult(
     val restoredProducts: Int,
     val restoredTransactions: Int,
     val restoredPlans: Int,
-    val timestamp: Long
+    val timestamp: Long,
+    val backupJson: String? = null
 )
 
 class FirebaseFirestoreSyncHelper(private val context: Context) {
@@ -39,10 +52,16 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
     private val firestore: FirebaseFirestore? by lazy {
         try {
             ensureFirebaseInitialized(context)
-            FirebaseFirestore.getInstance()
+            val dbIdRes = context.resources.getIdentifier("firestore_database_id", "string", context.packageName)
+            val dbId = if (dbIdRes != 0) context.getString(dbIdRes) else "ai-studio-android-ecotobac-7baa973e-7c16-4d74-8a86-4a1ef92fd4a0"
+            FirebaseFirestore.getInstance(FirebaseApp.getInstance(), dbId)
         } catch (e: Exception) {
-            Log.w("FirestoreSyncHelper", "Firestore unavailable: ${e.message}")
-            null
+            Log.w("FirestoreSyncHelper", "Firestore named db init notice: ${e.message}")
+            try {
+                FirebaseFirestore.getInstance()
+            } catch (ex: Exception) {
+                null
+            }
         }
     }
 
@@ -54,8 +73,8 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                     FirebaseApp.initializeApp(ctx.applicationContext)
                 } else {
                     val options = FirebaseOptions.Builder()
-                        .setApplicationId("1:680872469505:web:4f89cbd24222aaaf998c00")
-                        .setApiKey("AIzaSyBWw2rT7zrVogQvFs_7ExqV-Y2mN4AjNto")
+                        .setApplicationId("1:680872469505:android:983bf0e74d3ab7cd998c00")
+                        .setApiKey("AIzaSyCfVEKVF9LLUWYxvyr5OKzccq1FJz_4-6I")
                         .setProjectId("project-0be2da66-9971-458e-bfe")
                         .setStorageBucket("project-0be2da66-9971-458e-bfe.firebasestorage.app")
                         .build()
@@ -71,6 +90,14 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
 
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
+    private val _syncStatus = MutableStateFlow<FirestoreSyncStatus>(
+        if (prefs.getLong("last_firestore_sync_time", -1L) > 0) FirestoreSyncStatus.SYNCED else FirestoreSyncStatus.IDLE
+    )
+    val syncStatus: StateFlow<FirestoreSyncStatus> = _syncStatus.asStateFlow()
+
+    private val _lastErrorMessage = MutableStateFlow<String?>(null)
+    val lastErrorMessage: StateFlow<String?> = _lastErrorMessage.asStateFlow()
 
     private val _syncProgress = MutableStateFlow(0f)
     val syncProgress: StateFlow<Float> = _syncProgress.asStateFlow()
@@ -91,19 +118,22 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
         products: List<ProductEntity>,
         transactions: List<TransactionEntity>,
         plans: List<ProcurementPlanWithItems>,
-        categories: List<CategoryEntity>
+        categories: List<CategoryEntity>,
+        backupJson: String? = null
     ): Result<FirestoreSyncResult> = withContext(Dispatchers.IO) {
         if (userId.isBlank()) {
             return@withContext Result.failure(IllegalArgumentException("User ID is empty"))
         }
         val fs = firestore ?: return@withContext Result.failure(IllegalStateException("Cloud Firestore tidak tersedia"))
 
+        _syncStatus.value = FirestoreSyncStatus.SYNCING
         _isSyncing.value = true
+        _lastErrorMessage.value = null
         _syncProgress.value = 0.05f
         _syncMessage.value = "Menyiapkan data stok & transaksi..."
 
         try {
-            kotlinx.coroutines.withTimeout(8000) {
+            kotlinx.coroutines.withTimeout(45000) {
                 val userDoc = fs.collection("users").document(userId)
                 val now = System.currentTimeMillis()
 
@@ -213,11 +243,38 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
             }
             _syncProgress.value = 0.95f
 
-            // 5. Save preferences
+            // 5. Simpan Snapshot File Backup ke Collection 'backups' di Firestore
+            try {
+                val backupId = "cloud_backup_main"
+                val backupName = "eco_tobacco_cloud_backup.json"
+                val backupMap = hashMapOf(
+                    "id" to backupId,
+                    "name" to backupName,
+                    "timestamp" to now,
+                    "productCount" to products.size,
+                    "transactionCount" to transactions.size,
+                    "planCount" to plans.size,
+                    "source" to "Cloud Firestore",
+                    "jsonData" to (backupJson ?: "")
+                )
+                userDoc.collection("backups").document(backupId)
+                    .set(backupMap, SetOptions.merge()).await()
+
+                if (!backupJson.isNullOrBlank()) {
+                    userDoc.collection("data").document("latest_backup")
+                        .set(hashMapOf("jsonData" to backupJson, "timestamp" to now), SetOptions.merge()).await()
+                }
+            } catch (e: Exception) {
+                Log.w("FirestoreSyncHelper", "Snapshot backup doc notice: ${e.message}")
+            }
+
+            // 6. Save preferences
             prefs.edit().putLong("last_firestore_sync_time", now).apply()
             _lastSyncedTime.value = now
             _syncProgress.value = 1.0f
             _syncMessage.value = "Sinkronisasi selesai! ${products.size} stok & ${transactions.size} transaksi tersimpan di Firestore."
+            _syncStatus.value = FirestoreSyncStatus.SYNCED
+            _lastErrorMessage.value = null
             _isSyncing.value = false
 
             val result = FirestoreSyncResult(
@@ -229,21 +286,165 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
             return@withTimeout Result.success(result)
           }
         } catch (e: Exception) {
-            Log.w("FirestoreSyncHelper", "Sync to Firestore notice / timeout: ${e.message}")
+            Log.w("FirestoreSyncHelper", "Sync to Firestore error: ${e.message}")
             _isSyncing.value = false
-            val now = System.currentTimeMillis()
-            prefs.edit().putLong("last_firestore_sync_time", now).apply()
-            _lastSyncedTime.value = now
-            _syncProgress.value = 1.0f
-            _syncMessage.value = "Data berhasil disinkronkan & diamankan secara lokal (Cloud Aman)!"
+            _syncStatus.value = FirestoreSyncStatus.ERROR
+            val errMsg = e.localizedMessage ?: "Gagal terhubung ke Cloud Firestore"
+            _lastErrorMessage.value = errMsg
+            _syncMessage.value = "Gagal sinkron Cloud: $errMsg"
+            return@withContext Result.failure(e)
+        }
+    }
 
-            val result = FirestoreSyncResult(
-                uploadedProducts = products.size,
-                uploadedTransactions = transactions.size,
-                uploadedPlans = plans.size,
-                timestamp = now
-            )
-            return@withContext Result.success(result)
+    /**
+     * Lists all cloud backup snapshots stored in Firestore for the given user.
+     * Uses resilient queries without requiring specific composite indexes.
+     */
+    suspend fun listCloudBackups(userId: String): List<DriveBackupFile> = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) return@withContext emptyList()
+        val fs = firestore ?: return@withContext emptyList()
+        val list = mutableListOf<DriveBackupFile>()
+        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+
+        val userDoc = fs.collection("users").document(userId)
+
+        // 1. Query 'backups' subcollection (resilient in-memory sorting)
+        try {
+            val snapshot = userDoc.collection("backups").limit(50).get().await()
+            val sortedDocs = snapshot.documents.sortedByDescending { it.getLong("timestamp") ?: 0L }
+            for (doc in sortedDocs) {
+                val id = doc.getString("id") ?: doc.id
+                val name = doc.getString("name") ?: "Backup Cloud ($id)"
+                val timestamp = doc.getLong("timestamp") ?: System.currentTimeMillis()
+                val prodCount = doc.getLong("productCount")?.toInt() ?: 0
+                val txCount = doc.getLong("transactionCount")?.toInt() ?: 0
+                val planCount = doc.getLong("planCount")?.toInt() ?: 0
+                val jsonData = doc.getString("jsonData")
+
+                val countText = "$prodCount Produk • $txCount Transaksi" + (if (planCount > 0) " • $planCount Rencana" else "")
+
+                list.add(
+                    DriveBackupFile(
+                        id = id,
+                        name = name,
+                        modifiedTime = sdf.format(Date(timestamp)),
+                        source = "Cloud Firestore",
+                        itemCountText = countText,
+                        jsonData = jsonData
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "Query backups subcollection notice: ${e.message}")
+        }
+
+        // 2. Check 'latest_backup' snapshot in 'data' collection
+        try {
+            val latestBackupDoc = userDoc.collection("data").document("latest_backup").get().await()
+            if (latestBackupDoc.exists()) {
+                val timestamp = latestBackupDoc.getLong("timestamp") ?: System.currentTimeMillis()
+                val json = latestBackupDoc.getString("jsonData")
+                var summaryText = "Snapshot Cadangan Cloud Terkini"
+                if (!json.isNullOrBlank()) {
+                    try {
+                        val obj = org.json.JSONObject(json)
+                        val p = obj.optJSONArray("products")?.length() ?: 0
+                        val t = obj.optJSONArray("transactions")?.length() ?: 0
+                        summaryText = "$p Produk • $t Transaksi (Cadangan Cloud)"
+                    } catch (e: Exception) { /* ignore */ }
+                }
+                if (list.none { it.id == "firestore_latest_backup" || it.id.startsWith("cloud_backup_") }) {
+                    list.add(
+                        0,
+                        DriveBackupFile(
+                            id = "firestore_latest_backup",
+                            name = "eco_tobacco_snapshot_terkini.json",
+                            modifiedTime = sdf.format(Date(timestamp)),
+                            source = "Cloud Firestore",
+                            itemCountText = summaryText,
+                            jsonData = json
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "Query latest_backup doc notice: ${e.message}")
+        }
+
+        // 3. Fallback: Check metadata if no backup snapshots yet exist
+        try {
+            val metaDoc = userDoc.collection("data").document("metadata").get().await()
+            if (metaDoc.exists()) {
+                val lastSync = metaDoc.getLong("lastSyncTimestamp") ?: System.currentTimeMillis()
+                val totalProd = metaDoc.getLong("totalProducts")?.toInt() ?: 0
+                val totalTx = metaDoc.getLong("totalTransactions")?.toInt() ?: 0
+                if (list.none { it.id == "firestore_latest_sync" }) {
+                    list.add(
+                        DriveBackupFile(
+                            id = "firestore_latest_sync",
+                            name = "eco_tobacco_cloud_sync_aktif.json",
+                            modifiedTime = sdf.format(Date(lastSync)),
+                            source = "Cloud Firestore",
+                            itemCountText = "$totalProd Produk • $totalTx Transaksi (Data Cloud Terkini)",
+                            jsonData = null
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "Query metadata doc notice: ${e.message}")
+        }
+
+        list
+    }
+
+    /**
+     * Gets JSON content of a specific backup snapshot from Firestore
+     */
+    suspend fun getCloudBackupJson(userId: String, backupId: String): String? = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || backupId.isBlank()) return@withContext null
+        val fs = firestore ?: return@withContext null
+        try {
+            val userDoc = fs.collection("users").document(userId)
+
+            if (backupId == "firestore_latest_backup") {
+                val doc = userDoc.collection("data").document("latest_backup").get().await()
+                val json = doc.getString("jsonData")
+                if (!json.isNullOrBlank()) return@withContext json
+            }
+
+            // Try subcollection backups
+            val doc = userDoc.collection("backups").document(backupId).get().await()
+            val json = doc.getString("jsonData")
+            if (!json.isNullOrBlank()) return@withContext json
+
+            // Fallback to latest_backup
+            val fallbackDoc = userDoc.collection("data").document("latest_backup").get().await()
+            fallbackDoc.getString("jsonData")
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "getCloudBackupJson notice: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Deletes a cloud backup snapshot from Firestore
+     */
+    suspend fun deleteCloudBackup(userId: String, backupId: String): Boolean = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || backupId.isBlank()) return@withContext false
+        val fs = firestore ?: return@withContext false
+        try {
+            if (backupId == "firestore_latest_backup") {
+                fs.collection("users").document(userId).collection("data").document("latest_backup").delete().await()
+            } else {
+                fs.collection("users").document(userId).collection("backups").document(backupId).delete().await()
+            }
+            true
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "deleteCloudBackup error: ${e.message}")
+            false
         }
     }
 
@@ -259,11 +460,24 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
         }
         val fs = firestore ?: return@withContext Result.failure(IllegalStateException("Cloud Firestore tidak tersedia"))
 
+        _syncStatus.value = FirestoreSyncStatus.SYNCING
         _isSyncing.value = true
+        _lastErrorMessage.value = null
         _syncMessage.value = "Mengunduh data dari Cloud Firestore..."
 
         try {
             val userDoc = fs.collection("users").document(userId)
+
+            // 0. Fetch backup JSON with settings if available
+            var restoredBackupJson: String? = null
+            try {
+                val backupDoc = userDoc.collection("data").document("latest_backup").get().await()
+                if (backupDoc.exists()) {
+                    restoredBackupJson = backupDoc.getString("jsonData")
+                }
+            } catch (e: Exception) {
+                Log.w("FirestoreSyncHelper", "Fetch latest_backup notice: ${e.message}")
+            }
 
             // 1. Fetch products
             val productsSnapshot = userDoc.collection("products").get().await()
@@ -354,6 +568,8 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
             prefs.edit().putLong("last_firestore_sync_time", now).apply()
             _lastSyncedTime.value = now
             _isSyncing.value = false
+            _syncStatus.value = FirestoreSyncStatus.SYNCED
+            _lastErrorMessage.value = null
             _syncMessage.value = "Berhasil memulihkan $restoredProducts produk & $restoredTransactions transaksi dari Firestore!"
 
             Result.success(
@@ -361,18 +577,21 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                     restoredProducts = restoredProducts,
                     restoredTransactions = restoredTransactions,
                     restoredPlans = restoredPlans,
-                    timestamp = now
+                    timestamp = now,
+                    backupJson = restoredBackupJson
                 )
             )
         } catch (e: Exception) {
             Log.w("FirestoreSyncHelper", "Restore from Firestore notice: ${e.message}")
             _isSyncing.value = false
+            _syncStatus.value = FirestoreSyncStatus.ERROR
             val errStr = e.message ?: ""
             val userMsg = if (errStr.contains("PERMISSION_DENIED") || errStr.contains("administrator only") || errStr.contains("Missing or insufficient permissions")) {
                 "Cloud Firestore dibatasi aturan akses. Data Anda aman tersimpan secara lokal (Room Database) & Google Drive Backup."
             } else {
                 "Gagal memulihkan Firestore: ${e.localizedMessage}"
             }
+            _lastErrorMessage.value = userMsg
             _syncMessage.value = userMsg
             Result.failure(Exception(userMsg))
         }

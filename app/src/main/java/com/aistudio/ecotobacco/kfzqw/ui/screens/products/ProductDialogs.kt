@@ -498,103 +498,12 @@ fun EditProductDialog(
         shape = RoundedCornerShape(24.dp),
         text = {
             Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                // Sisakan ruang agar tombol Kelola Satuan tidak tertutup tombol aksi dialog.
+                verticalArrangement = Arrangement.spacedBy(12.dp),
                 modifier = Modifier
-                    .padding(bottom = 88.dp)
+                    .padding(bottom = 72.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nama Produk") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
-                )
-
-                OutlinedTextField(
-                    value = subCategory,
-                    onValueChange = { subCategory = it },
-                    label = { Text("Sub Kategori (Contoh: Tembakau, Alat, Papir, dll)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary),
-                    supportingText = { Text("Misal: Tembakau, Tembakau Kemasan, Alat, Papir, dll.") }
-                )
-
-                if (subCategoryOptions.isNotEmpty()) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Sub Kategori Tersimpan:",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            subCategoryOptions.forEach { option ->
-                                val isSelected = subCategory.equals(option, ignoreCase = true)
-                                Surface(
-                                    onClick = { subCategory = option },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
-                                ) {
-                                    Text(
-                                        text = option,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedTextField(
-                        value = priceStr,
-                        onValueChange = { priceStr = it },
-                        label = { Text("Harga Kulakan") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
-                    )
-
-                    OutlinedTextField(
-                        value = sellingPriceStr,
-                        onValueChange = { sellingPriceStr = it },
-                        label = { Text("Harga Jual") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
-                    )
-                }
-
-                OutlinedTextField(
-                    value = contentQtyStr,
-                    onValueChange = { contentQtyStr = it },
-                    label = { Text("Isi per Satuan Beli (Contoh: 10)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary),
-                    supportingText = { Text("Misal: Beli 1 Pak isi 10 Pcs, maka isi 10") }
-                )
-
-                // Profit Estimation
+                // LIVE PREVIEW CARD (Pinned at top so it is never covered by keyboard)
                 val cost = priceStr.toDoubleOrNull() ?: 0.0
                 val sell = sellingPriceStr.toDoubleOrNull() ?: 0.0
                 val contentQty = contentQtyStr.toDoubleOrNull() ?: 1.0
@@ -618,13 +527,13 @@ fun EditProductDialog(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
+                            .padding(12.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column {
                             Text(
-                                text = "ESTIMASI LABA PER $selectedSellingUnit",
+                                text = "PREVIEW LIVE LABA / $selectedSellingUnit",
                                 fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 letterSpacing = 0.6.sp,
@@ -638,7 +547,7 @@ fun EditProductDialog(
                             )
                             if (contentQty > 1) {
                                 Text(
-                                    text = "Modal: ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")} / $selectedSellingUnit",
+                                    text = "Modal: ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")}",
                                     fontSize = 11.sp,
                                     color = Color(0xFF94A3B8)
                                 )
@@ -660,10 +569,99 @@ fun EditProductDialog(
                     }
                 }
 
-                // Purchase Unit
+                // Nama Produk
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Nama Produk") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
+                )
+
+                // Sub Kategori
+                OutlinedTextField(
+                    value = subCategory,
+                    onValueChange = { subCategory = it },
+                    label = { Text("Sub Kategori") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
+                )
+
+                if (subCategoryOptions.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        subCategoryOptions.forEach { option ->
+                            val isSelected = subCategory.equals(option, ignoreCase = true)
+                            Surface(
+                                onClick = { subCategory = option },
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                            ) {
+                                Text(
+                                    text = option,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Harga Kulakan & Harga Jual
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = priceStr,
+                        onValueChange = { priceStr = it },
+                        label = { Text("Harga Kulakan") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
+                    )
+
+                    OutlinedTextField(
+                        value = sellingPriceStr,
+                        onValueChange = { sellingPriceStr = it },
+                        label = { Text("Harga Jual") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
+                    )
+                }
+
+                // Isi per Satuan
+                OutlinedTextField(
+                    value = contentQtyStr,
+                    onValueChange = { contentQtyStr = it },
+                    label = { Text("Isi per Satuan Beli (Misal: 10)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
+                )
+
+                // Satuan Beli & Satuan Jual
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ExposedDropdownMenuBox(
@@ -680,12 +678,8 @@ fun EditProductDialog(
                                 .fillMaxWidth()
                                 .menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
                             shape = RoundedCornerShape(12.dp),
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded)
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
-                            )
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded) },
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
                         )
                         ExposedDropdownMenu(
                             expanded = unitExpanded,
@@ -698,8 +692,7 @@ fun EditProductDialog(
                                     onClick = {
                                         selectedUnit = option
                                         unitExpanded = false
-                                    },
-                                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                                    }
                                 )
                             }
                             DropdownMenuItem(
@@ -712,27 +705,6 @@ fun EditProductDialog(
                         }
                     }
 
-                    if (selectedUnit == "Custom") {
-                        OutlinedTextField(
-                            value = customUnit,
-                            onValueChange = { customUnit = it },
-                            label = { Text("Unit Baru") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-                }
-
-                // Selling Unit
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
                     ExposedDropdownMenuBox(
                         expanded = sellingUnitExpanded,
                         onExpandedChange = { sellingUnitExpanded = !sellingUnitExpanded },
@@ -747,12 +719,8 @@ fun EditProductDialog(
                                 .fillMaxWidth()
                                 .menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
                             shape = RoundedCornerShape(12.dp),
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = sellingUnitExpanded)
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
-                            )
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sellingUnitExpanded) },
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
                         )
                         ExposedDropdownMenu(
                             expanded = sellingUnitExpanded,
@@ -765,8 +733,7 @@ fun EditProductDialog(
                                     onClick = {
                                         selectedSellingUnit = option
                                         sellingUnitExpanded = false
-                                    },
-                                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding
+                                    }
                                 )
                             }
                             DropdownMenuItem(
@@ -778,19 +745,33 @@ fun EditProductDialog(
                             )
                         }
                     }
+                }
 
-                    if (selectedSellingUnit == "Custom") {
-                        OutlinedTextField(
-                            value = customSellingUnit,
-                            onValueChange = { customSellingUnit = it },
-                            label = { Text("Unit Baru") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
+                if (selectedUnit == "Custom" || selectedSellingUnit == "Custom") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        if (selectedUnit == "Custom") {
+                            OutlinedTextField(
+                                value = customUnit,
+                                onValueChange = { customUnit = it },
+                                label = { Text("Custom Satuan Beli") },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
                             )
-                        )
+                        }
+                        if (selectedSellingUnit == "Custom") {
+                            OutlinedTextField(
+                                value = customSellingUnit,
+                                onValueChange = { customSellingUnit = it },
+                                label = { Text("Custom Satuan Jual") },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                singleLine = true
+                            )
+                        }
                     }
                 }
 

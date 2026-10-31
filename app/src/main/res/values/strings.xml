@@ -1,9 +1,3 @@
 <resources>
     <string name="app_name">ECO TOBACCO</string>
-    <string name="nav_home">Beranda</string>
-    <string name="nav_products">Produk &amp; Kategori</string>
-    <string name="nav_transactions">Transaksi</string>
-    <string name="nav_reports">Laporan</string>
-    <string name="nav_settings">Pengaturan</string>
-    <string name="widget_description">Widget ringkasan kulakan, rencana belanja, dan katalog stok Eco Tobacco</string>
 </resources>

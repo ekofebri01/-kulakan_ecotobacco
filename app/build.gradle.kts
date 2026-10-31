@@ -12,8 +12,8 @@ android {
         applicationId = "com.aistudio.ecotobacco.kfzqw"
         minSdk = 24
         targetSdk = 34
-        versionCode = 14
-        versionName = "4.2"
+        versionCode = 16
+        versionName = "4.4"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -23,8 +23,21 @@ android {
         buildConfigField("String", "GOOGLE_OAUTH_CLIENT_ID", "\"\"")
     }
 
+    signingConfigs {
+        create("debugConfig") {
+            storeFile = file("${rootDir}/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debugConfig")
+        }
         release {
+            signingConfig = signingConfigs.getByName("debugConfig")
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

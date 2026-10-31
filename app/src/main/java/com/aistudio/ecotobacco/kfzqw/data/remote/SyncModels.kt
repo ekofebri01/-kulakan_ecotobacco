@@ -58,7 +58,9 @@ data class ProductSyncModel(
     val unit: String? = "kg",
     val sellingPrice: Double? = 0.0,
     val sellingUnit: String? = "pcs",
-    val contentQuantity: Double? = 1.0
+    val contentQuantity: Double? = 1.0,
+    val category: String? = "",
+    val subCategory: String? = "Umum"
 )
 
 @JsonClass(generateAdapter = true)

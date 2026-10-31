@@ -1,0 +1,13 @@
+{
+  "name": "eco-tobacco-web-dashboard",
+  "version": "1.0.0",
+  "description": "Web Dashboard dan Manajemen Kasir untuk ECO TOBACCO",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["tobacco", "cashier", "dashboard", "firestore"],
+  "author": "ECO TOBACCO",
+  "license": "ISC"
+}
