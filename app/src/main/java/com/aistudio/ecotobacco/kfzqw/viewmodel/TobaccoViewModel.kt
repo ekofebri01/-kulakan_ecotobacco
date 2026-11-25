@@ -97,6 +97,9 @@ class TobaccoViewModel(
     val autoCheckUpdateEnabled: StateFlow<Boolean> = githubUpdateManager.autoCheckEnabled
 
     private val appPrefs = getApplication<Application>().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+
+    private val _showWhatsNewDialog = MutableStateFlow(false)
+    val showWhatsNewDialog: StateFlow<Boolean> = _showWhatsNewDialog.asStateFlow()
     
     // RISC Server URL - In production this should be your backend address
     private val RISC_STATUS_URL = "https://your-risc-backend.com/risc/status"
@@ -749,6 +752,11 @@ class TobaccoViewModel(
             delay(100)
             _isAppReady.value = true
 
+            val lastSeenVersionCode = appPrefs.getInt("last_seen_version_code", 0)
+            if (BuildConfig.VERSION_CODE > lastSeenVersionCode) {
+                _showWhatsNewDialog.value = true
+            }
+
             // Muat info backup otomatis & lakukan backup awal jika belum ada
             loadAutoBackupInfo(getApplication())
             val backupFile = getBackupFile(getApplication())
@@ -805,6 +813,11 @@ class TobaccoViewModel(
 
     fun dismissUpdateDialog() {
         githubUpdateManager.resetState()
+    }
+
+    fun dismissWhatsNewDialog() {
+        _showWhatsNewDialog.value = false
+        appPrefs.edit { putInt("last_seen_version_code", BuildConfig.VERSION_CODE) }
     }
 
     fun cleanupUpdateFilesNow() {

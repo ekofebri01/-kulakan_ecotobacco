@@ -12,6 +12,26 @@ data class ChangelogRelease(
 object AppChangelog {
     val releases: List<ChangelogRelease> = listOf(
         ChangelogRelease(
+            version = "4.7",
+            buildNumber = 19,
+            date = "25 Nov 2026",
+            headline = "Input Kulakan Multi-Item & Scan Nota dari Galeri",
+            highlights = listOf(
+                "Input kulakan manual mendukung banyak barang sekaligus (keranjang)",
+                "Form kuantitas & harga lebih compact dengan tombol cepat 0,5",
+                "Scan nota langsung dari Galeri HP dengan pemandu crop visual",
+                "Toleransi OCR mata uang struk thermal (Rp/Rd/Ro/Rb) lebih presisi"
+            ),
+            changes = listOf(
+                "Merombak layar Input Kulakan menjadi satu kartu form terpadu dengan daftar keranjang agar bisa mencatat banyak barang sekaligus.",
+                "Menyusun kolom kuantitas dan harga berdampingan secara ringkas serta mendukung pecahan 0,5 dan tombol ±0,5.",
+                "Menambahkan fitur Scan dari Galeri menggunakan Android Photo Picker (tanpa izin penyimpanan tambahan).",
+                "Menambahkan UI overlay pemandu crop visual pada AI Scanner Nota untuk membantu menyelaraskan struk.",
+                "Meningkatkan ReceiptParser agar mengenali salah baca OCR huruf mata uang seperti Rd, Ro, dan Rb.",
+                "Menambahkan popup What's New otomatis saat pertama kali membuka pembaruan aplikasi."
+            )
+        ),
+        ChangelogRelease(
             version = "4.6",
             buildNumber = 18,
             date = "23 Nov 2026",

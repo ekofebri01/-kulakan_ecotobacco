@@ -31,6 +31,7 @@ import com.aistudio.ecotobacco.kfzqw.ui.screens.scanner.ReceiptScannerScreen
 import com.aistudio.ecotobacco.kfzqw.ui.screens.settings.SettingsScreen
 import com.aistudio.ecotobacco.kfzqw.ui.screens.splash.SplashScreen
 import com.aistudio.ecotobacco.kfzqw.ui.screens.transactions.TransactionEntryScreen
+import com.aistudio.ecotobacco.kfzqw.ui.components.WhatsNewChangelogDialog
 import com.aistudio.ecotobacco.kfzqw.ui.theme.EcoTobaccoTheme
 import com.aistudio.ecotobacco.kfzqw.ui.theme.UiConfig
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModel
@@ -118,6 +119,7 @@ fun AppNavigation(
     val isAppReady by viewModel.isAppReady.collectAsStateWithLifecycle()
     val initProgress by viewModel.appInitProgress.collectAsStateWithLifecycle()
     val initStatusText by viewModel.initStatusText.collectAsStateWithLifecycle()
+    val showWhatsNewDialog by viewModel.showWhatsNewDialog.collectAsStateWithLifecycle()
     var splashDismissed by remember { mutableStateOf(false) }
 
     LaunchedEffect(initialRoute) {
@@ -282,6 +284,12 @@ fun AppNavigation(
                     onNavigateToProcurement = { currentRoute = Routes.PROCUREMENT_PLANNING }
                 )
             }
+        }
+
+        if (showWhatsNewDialog) {
+            WhatsNewChangelogDialog(
+                onDismiss = { viewModel.dismissWhatsNewDialog() }
+            )
         }
     }
 }

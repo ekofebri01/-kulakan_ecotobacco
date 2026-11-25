@@ -123,9 +123,9 @@ import com.aistudio.ecotobacco.kfzqw.data.remote.DriveBackupFile
 import com.aistudio.ecotobacco.kfzqw.data.remote.SyncStatus
 import com.aistudio.ecotobacco.kfzqw.data.remote.InAppUpdateState
 import com.aistudio.ecotobacco.kfzqw.data.remote.GitHubReleaseInfo
-import com.aistudio.ecotobacco.kfzqw.ui.AppChangelog
 import com.aistudio.ecotobacco.kfzqw.ui.Routes
 import com.aistudio.ecotobacco.kfzqw.ui.components.ThemeOptionItem
+import com.aistudio.ecotobacco.kfzqw.ui.components.WhatsNewChangelogDialog
 import com.aistudio.ecotobacco.kfzqw.ui.theme.LocalUiConfig
 import com.aistudio.ecotobacco.kfzqw.ui.theme.scaled
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModel
@@ -739,85 +739,8 @@ fun SettingsScreen(
     }
 
     if (showWhatsNew) {
-        val latestRelease = AppChangelog.latest
-        AlertDialog(
-            onDismissRequest = { showWhatsNew = false },
-            title = {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text("What's New & Changelog", fontWeight = FontWeight.ExtraBold)
-                    Text(
-                        "Eco Tobacco v${Routes.APP_VERSION} • ${latestRelease.date}",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
-            },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 420.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                "Sorotan v${latestRelease.version}",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                latestRelease.headline,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            latestRelease.highlights.forEach { highlight ->
-                                Text(
-                                    "• $highlight",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    AppChangelog.releases.forEachIndexed { index, release ->
-                        if (index > 0) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                        }
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                "v${release.version} (Build ${release.buildNumber}) • ${release.date}",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            release.changes.forEach { item ->
-                                Text(
-                                    "– $item",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
-
-                    HorizontalDivider(Modifier.padding(top = 4.dp))
-                    Text("Developer: ekofebriarianto", style = MaterialTheme.typography.labelSmall)
-                }
-            },
-            confirmButton = { Button(onClick = { showWhatsNew = false }) { Text("Tutup") } },
-            shape = RoundedCornerShape(28.dp)
+        WhatsNewChangelogDialog(
+            onDismiss = { showWhatsNew = false }
         )
     }
 

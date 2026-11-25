@@ -1,5 +1,17 @@
 # Changelog Eco Tobacco
 
+## v4.7 (Build 19) — 25 Nov 2026
+**Rombak Input Kulakan Multi-Item & Scanner Nota Galeri**
+
+### What's New
+- **Input Kulakan Banyak Barang Sekaligus**: Rombak total form input manual menjadi satu kartu terpadu dengan daftar keranjang (*multi-item*) sebelum disimpan dalam satu transaksi.
+- **Kuantitas & Harga Ringkas + Dukungan 0,5**: Kolom jumlah dan harga modal kini tersusun berdampingan lebih compact dengan tombol cepat pecahan `0,5` dan pengatur `±0,5`.
+- **Scan Nota dari Galeri HP**: Tambahan tombol **Galeri** (Android Photo Picker tanpa izin penyimpanan) di layar AI Scanner Nota untuk memindai foto atau screenshot struk yang tersimpan di perangkat.
+- **Pemandu Crop Visual & Akurasi OCR**: Overlay garis pemandu crop untuk menyejajarkan nota sebelum dipindai serta toleransi pembacaan mata uang struk thermal (`Rd`, `Ro`, `Rb`).
+- **Popup Otomatis What's New**: Menampilkan sorotan fitur baru secara otomatis saat membuka versi terbaru, plus akses riwayat lengkap di Pengaturan.
+
+---
+
 ## v4.6 (Build 18) — 23 Nov 2026
 **Pembaruan GitHub Updater & Scanner Nota Modular**
 
