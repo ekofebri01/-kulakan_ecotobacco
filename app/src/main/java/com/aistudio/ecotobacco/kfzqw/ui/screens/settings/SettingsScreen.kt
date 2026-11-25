@@ -638,12 +638,24 @@ fun SettingsScreen(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
 
                         PremiumSettingItem(
-                            title = "Ekspor / Impor File JSON",
-                            subtitle = "Simpan atau muat file .json cadangan eksternal",
+                            title = "Ekspor File JSON ke Perangkat",
+                            subtitle = "Simpan file cadangan .json ke penyimpanan HP",
                             icon = Icons.Default.Upload,
                             onClick = {
                                 val fileName = "eco_tobacco_backup_${SimpleDateFormat("yyyyMMdd_HHmm", Locale.getDefault()).format(Date())}.json"
                                 createBackupLauncher.launch(fileName)
+                            }
+                        )
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        PremiumSettingItem(
+                            title = "Pulihkan dari Perangkat",
+                            subtitle = "Pilih & impor file cadangan .json dari HP Anda",
+                            icon = Icons.Default.UploadFile,
+                            iconColor = MaterialTheme.colorScheme.primary,
+                            onClick = {
+                                restoreLauncher.launch(arrayOf("application/json", "*/*"))
                             }
                         )
 
