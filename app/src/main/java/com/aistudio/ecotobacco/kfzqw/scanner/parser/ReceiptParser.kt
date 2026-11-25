@@ -37,7 +37,7 @@ object ReceiptParser {
 
     // Pola baris harga kasir 2-baris: "1 x 133.000   Rp 133.000" atau "1.5 kg x 100.000 Rp 150.000"
     private val TWO_LINE_QTY_ROW = Regex(
-        """^([0-9OoIl]+(?:[.,][0-9OoIl]+)?)\s*(?:([a-zA-Z]+)\s+)?[xX×*]\s*(?:R[pob]\.?\s*)?([0-9OoIl.,]+)\s+(?:R[pob]\.?\s*)?([0-9OoIl.,]+)$""",
+        """^([0-9OoIl]+(?:[.,][0-9OoIl]+)?)\s*(?:([a-zA-Z]+)\s+)?[xX×*]\s*(?:R[pobd]\.?\s*)?([0-9OoIl.,]+)\s+(?:R[pobd]\.?\s*)?([0-9OoIl.,]+)$""",
         RegexOption.IGNORE_CASE
     )
 
@@ -120,7 +120,7 @@ object ReceiptParser {
         if (requireDigit && raw.none { it.isDigit() }) return null
         val cleaned = raw
             .trim()
-            .replace(Regex("^(?i)r[pob]\\.?"), "")
+            .replace(Regex("^(?i)r[pobd]\\.?"), "")
             .replace(Regex("[.,]00$"), "")          // buang ",00" atau ".00" desimal
             .replace('O', '0').replace('o', '0')
             .replace('l', '1').replace('I', '1')
@@ -419,7 +419,7 @@ object ReceiptParser {
     private fun extractPriceAt(tokens: List<String>, startIndex: Int): Pair<Double, Int>? {
         val t = tokens.getOrNull(startIndex) ?: return null
         val upper = t.uppercase().removeSuffix(".").trim()
-        if (upper == "RP" || upper == "RO" || upper == "RB") {
+        if (upper == "RP" || upper == "RO" || upper == "RB" || upper == "RD") {
             val next = tokens.getOrNull(startIndex + 1) ?: return null
             val price = parseIndonesianCurrency(next) ?: return null
             return Pair(price, startIndex + 1)
@@ -632,8 +632,8 @@ object ReceiptParser {
     fun parseIndonesianCurrency(token: String): Double? {
         var clean = token.trim()
 
-        // Hapus prefix Rp / Rp. / Ro / Rb (toleransi OCR)
-        clean = clean.replace(Regex("^(?i)r[pob]\\.?"), "").trim()
+        // Hapus prefix Rp / Rp. / Ro / Rb / Rd (toleransi OCR)
+        clean = clean.replace(Regex("^(?i)r[pobd]\\.?"), "").trim()
 
         // Hapus suffix strip atau koma strip: ",-" atau "-"
         if (clean.endsWith(",-") || clean.endsWith(".-")) {

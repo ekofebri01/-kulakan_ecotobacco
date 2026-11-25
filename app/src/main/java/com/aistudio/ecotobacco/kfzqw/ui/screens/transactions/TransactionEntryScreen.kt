@@ -111,6 +111,14 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+data class ManualCartItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val productName: String,
+    val quantity: Double,
+    val unitPrice: Double,
+    val unit: String
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TransactionEntryScreen(
@@ -130,6 +138,7 @@ fun TransactionEntryScreen(
     var selectedProduct by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("") }
     var unitPrice by remember { mutableStateOf("") }
+    var manualItemsList by remember { mutableStateOf(listOf<ManualCartItem>()) }
     var supplier by remember { mutableStateOf("") }
     var supplierExpanded by remember { mutableStateOf(false) }
     var productExpanded by remember { mutableStateOf(false) }
@@ -161,7 +170,9 @@ fun TransactionEntryScreen(
     // Calculations
     val parsedQty = quantity.toDoubleOrNull() ?: 0.0
     val parsedPrice = unitPrice.toDoubleOrNull() ?: 0.0
-    val totalTransaction = parsedQty * parsedPrice
+    val currentInputTotal = if (selectedProduct.isNotBlank() && parsedQty > 0) parsedQty * parsedPrice else 0.0
+    val cartItemsTotal = manualItemsList.sumOf { it.quantity * it.unitPrice }
+    val totalTransaction = cartItemsTotal + currentInputTotal
     val activeUnit = if (selectedUnit == "Custom") {
         customUnit.ifBlank { "unit" }
     } else selectedUnit
@@ -297,23 +308,38 @@ fun TransactionEntryScreen(
 
                     Spacer(modifier = Modifier.width(16.dp))
 
-                    val isFormValid = selectedProduct.isNotBlank() && quantity.isNotBlank() && unitPrice.isNotBlank() && (parsedQty > 0)
+                    val isFormValid = manualItemsList.isNotEmpty() || (selectedProduct.isNotBlank() && quantity.isNotBlank() && unitPrice.isNotBlank() && (parsedQty > 0))
 
                     Button(
                         onClick = {
-                            if (isFormValid) {
-                                viewModel.addTransaction(
-                                    date = selectedDate,
-                                    productName = selectedProduct.trim(),
-                                    quantity = parsedQty,
-                                    unitPrice = parsedPrice,
-                                    supplier = supplier.trim(),
-                                    unit = activeUnit
+                            val itemsToSave = mutableListOf<ManualCartItem>()
+                            manualItemsList.forEach { itemsToSave.add(it) }
+                            if (selectedProduct.isNotBlank() && parsedQty > 0 && parsedPrice >= 0) {
+                                itemsToSave.add(
+                                    ManualCartItem(
+                                        productName = selectedProduct.trim(),
+                                        quantity = parsedQty,
+                                        unitPrice = parsedPrice,
+                                        unit = activeUnit
+                                    )
                                 )
-                                Toast.makeText(context, "Kulakan Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
+                            }
+
+                            if (itemsToSave.isNotEmpty()) {
+                                itemsToSave.forEach { item ->
+                                    viewModel.addTransaction(
+                                        date = selectedDate,
+                                        productName = item.productName,
+                                        quantity = item.quantity,
+                                        unitPrice = item.unitPrice,
+                                        supplier = supplier.trim(),
+                                        unit = item.unit
+                                    )
+                                }
+                                Toast.makeText(context, "${itemsToSave.size} Item Kulakan Berhasil Disimpan!", Toast.LENGTH_SHORT).show()
                                 onNavigateBack()
                             } else {
-                                Toast.makeText(context, "Lengkapi produk, jumlah, dan harga", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, "Lengkapi produk, jumlah, dan harga atau tambahkan ke daftar", Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier
@@ -432,7 +458,7 @@ fun TransactionEntryScreen(
                                     }
                                 }
                                 Text(
-                                    text = "Foto struk faktur, data langsung terisi otomatis",
+                                    text = "Foto atau pilih struk dari galeri, data terisi otomatis",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     fontSize = 12.sp
@@ -762,7 +788,7 @@ fun TransactionEntryScreen(
                 }
             }
 
-            // --- 4. ITEM & PRODUK SECTION ---
+            // --- 4. FORM TAMBAH ITEM KULAKAN (UNIFIED & COMFORTABLE) ---
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(22.dp),
@@ -773,17 +799,35 @@ fun TransactionEntryScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    Text(
-                        text = "Pilih Produk & Satuan",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Tambah Item Kulakan",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Surface(
+                            color = primaryColor.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = "Dukungan 0,5",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor
+                            )
+                        }
+                    }
 
-                    // Autocomplete Product Input
+                    // 1. Product Autocomplete Input
                     ExposedDropdownMenuBox(
                         expanded = productExpanded,
                         onExpandedChange = { productExpanded = !productExpanded }
@@ -875,55 +919,48 @@ fun TransactionEntryScreen(
                         }
                     }
 
-                    // Quick Product Chips (Top master items for 1-tap select)
+                    // Quick Product Chips
                     if (products.isNotEmpty()) {
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Text(
-                                text = "Rekomendasi Produk:",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                products.take(6).forEach { p ->
-                                    val isSelected = selectedProduct.equals(p.name, ignoreCase = true)
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = {
-                                            if (isSelected) {
-                                                selectedProduct = ""
-                                            } else {
-                                                selectedProduct = p.name
-                                                if (p.price > 0) {
-                                                    unitPrice = if (p.price % 1.0 == 0.0) p.price.toLong().toString() else p.price.toString()
-                                                }
-                                                if (p.unit in unitOptions.filter { it != "Custom" }) {
-                                                    selectedUnit = p.unit
-                                                    customUnit = ""
-                                                } else {
-                                                    selectedUnit = "Custom"
-                                                    customUnit = p.unit
-                                                }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            products.take(6).forEach { p ->
+                                val isSelected = selectedProduct.equals(p.name, ignoreCase = true)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        if (isSelected) {
+                                            selectedProduct = ""
+                                        } else {
+                                            selectedProduct = p.name
+                                            if (p.price > 0) {
+                                                unitPrice = if (p.price % 1.0 == 0.0) p.price.toLong().toString() else p.price.toString()
                                             }
-                                        },
-                                        label = { Text(p.name, fontSize = 12.sp) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = primaryColor.copy(alpha = 0.2f),
-                                            selectedLabelColor = primaryColor
-                                        )
+                                            if (p.unit in unitOptions.filter { it != "Custom" }) {
+                                                selectedUnit = p.unit
+                                                customUnit = ""
+                                            } else {
+                                                selectedUnit = "Custom"
+                                                customUnit = p.unit
+                                            }
+                                        }
+                                    },
+                                    label = { Text(p.name, fontSize = 11.sp) },
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = primaryColor.copy(alpha = 0.2f),
+                                        selectedLabelColor = primaryColor
                                     )
-                                }
+                                )
                             }
                         }
                     }
 
-                    // Satuan Modern Chips & Option Row
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    // Unit Selection Chips
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -937,11 +974,11 @@ fun TransactionEntryScreen(
                             )
                             TextButton(
                                 onClick = { showUnitManagement = true },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
                             ) {
-                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(12.dp))
                                 Spacer(Modifier.width(4.dp))
-                                Text("Kelola Satuan", fontSize = 12.sp)
+                                Text("Kelola", fontSize = 11.sp)
                             }
                         }
 
@@ -949,15 +986,15 @@ fun TransactionEntryScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             unitOptions.forEach { opt ->
                                 val isSelected = selectedUnit == opt
                                 FilterChip(
                                     selected = isSelected,
                                     onClick = { selectedUnit = opt },
-                                    label = { Text(opt, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                                    shape = RoundedCornerShape(10.dp),
+                                    label = { Text(opt, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
+                                    shape = RoundedCornerShape(8.dp),
                                     colors = FilterChipDefaults.filterChipColors(
                                         selectedContainerColor = primaryColor,
                                         selectedLabelColor = Color.White
@@ -967,8 +1004,8 @@ fun TransactionEntryScreen(
                             FilterChip(
                                 selected = selectedUnit == "Custom",
                                 onClick = { selectedUnit = "Custom" },
-                                label = { Text("Lainnya...", fontWeight = if (selectedUnit == "Custom") FontWeight.Bold else FontWeight.Normal) },
-                                shape = RoundedCornerShape(10.dp),
+                                label = { Text("Lainnya...", fontSize = 11.sp) },
+                                shape = RoundedCornerShape(8.dp),
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = primaryColor,
                                     selectedLabelColor = Color.White
@@ -980,189 +1017,298 @@ fun TransactionEntryScreen(
                             OutlinedTextField(
                                 value = customUnit,
                                 onValueChange = { customUnit = it },
-                                label = { Text("Tulis Satuan Kustom") },
-                                placeholder = { Text("Contoh: ikat, karung, box") },
+                                label = { Text("Satuan Kustom (contoh: ikat, ball)") },
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(12.dp),
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = primaryColor
-                                )
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
                             )
                         }
                     }
-                }
-            }
 
-            // --- 5. KUANTITAS & HARGA SECTION ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = surfaceColor),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "Kuantitas & Harga Modal",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    // Side-by-Side Quantity & Price Fields
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = quantity,
+                            onValueChange = { quantity = it },
+                            label = { Text("Jumlah ($activeUnit)") },
+                            placeholder = { Text("0.5 / 1") },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(14.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal,
+                                imeAction = ImeAction.Next
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
+                        )
 
-                    // Qty Field with Stepper Buttons
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Decrement button
-                            FilledTonalIconButton(
-                                onClick = {
-                                    val current = quantity.toDoubleOrNull() ?: 0.0
-                                    if (current > 1.0) {
-                                        val next = current - 1.0
-                                        quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
-                                    } else if (current > 0.1) {
-                                        val next = (current - 0.5).coerceAtLeast(0.0)
-                                        quantity = String.format(Locale.US, "%.1f", next)
-                                    }
-                                },
-                                modifier = Modifier.size(52.dp),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Icon(Icons.Default.Remove, contentDescription = "Kurang")
-                            }
-
-                            OutlinedTextField(
-                                value = quantity,
-                                onValueChange = { quantity = it },
-                                label = { Text("Jumlah ($activeUnit)") },
-                                placeholder = { Text("0") },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(14.dp),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Decimal,
-                                    imeAction = ImeAction.Next
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = primaryColor
-                                )
-                            )
-
-                            // Increment button
-                            FilledTonalIconButton(
-                                onClick = {
-                                    val current = quantity.toDoubleOrNull() ?: 0.0
-                                    val next = current + 1.0
-                                    quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
-                                },
-                                modifier = Modifier.size(52.dp),
-                                shape = RoundedCornerShape(14.dp)
-                            ) {
-                                Icon(Icons.Default.Add, contentDescription = "Tambah")
-                            }
-                        }
-
-                        // Quick Qty Preset Chips
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            listOf(1.0, 2.0, 5.0, 10.0, 25.0, 50.0).forEach { presetVal ->
-                                val label = if (presetVal % 1.0 == 0.0) "+${presetVal.toLong()}" else "+$presetVal"
-                                FilledTonalButton(
-                                    onClick = {
-                                        val current = quantity.toDoubleOrNull() ?: 0.0
-                                        val next = current + presetVal
-                                        quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
-                                    },
-                                    shape = RoundedCornerShape(10.dp),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier.height(34.dp)
-                                ) {
-                                    Text(label, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                            TextButton(
-                                onClick = { quantity = "" },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Text("Reset", fontSize = 12.sp, color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    }
-
-                    // Price Field
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = unitPrice,
                             onValueChange = { unitPrice = it },
-                            label = { Text("Harga Kulakan per $activeUnit") },
-                            placeholder = { Text("Contoh: 85000") },
-                            prefix = {
-                                Text(
-                                    "Rp ",
-                                    fontWeight = FontWeight.Bold,
-                                    color = primaryColor
-                                )
-                            },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.AttachMoney,
-                                    contentDescription = null,
-                                    tint = primaryColor,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            },
-                            trailingIcon = {
-                                if (unitPrice.isNotBlank()) {
-                                    IconButton(onClick = { unitPrice = "" }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "Hapus", modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
+                            label = { Text("Harga / $activeUnit") },
+                            placeholder = { Text("85000") },
+                            prefix = { Text("Rp ", fontWeight = FontWeight.Bold, color = primaryColor) },
+                            modifier = Modifier.weight(1.3f),
                             shape = RoundedCornerShape(14.dp),
+                            singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Number,
                                 imeAction = ImeAction.Done
                             ),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = primaryColor
-                            )
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
                         )
+                    }
 
-                        // Quick Price helper from master product if available
-                        if (matchedProduct != null && matchedProduct.price > 0 && unitPrice != matchedProduct.price.toLong().toString()) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Harga Master: ${currencyFormatter.format(matchedProduct.price).replace("Rp", "Rp ")}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    // Quick Qty Preset Chips & Steppers
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Jumlah:",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        listOf(0.5, 1.0, 2.0, 5.0, 10.0, 25.0).forEach { presetVal ->
+                            val label = if (presetVal == 0.5) "0,5" else "+${presetVal.toLong()}"
+                            val isHalf = presetVal == 0.5
+                            FilledTonalButton(
+                                onClick = {
+                                    val current = quantity.toDoubleOrNull() ?: 0.0
+                                    val next = if (isHalf && current == 0.0) 0.5 else current + presetVal
+                                    quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp),
+                                colors = ButtonDefaults.filledTonalButtonColors(
+                                    containerColor = primaryColor.copy(alpha = 0.15f),
+                                    contentColor = primaryColor
                                 )
-                                TextButton(
-                                    onClick = {
-                                        unitPrice = if (matchedProduct.price % 1.0 == 0.0) {
-                                            matchedProduct.price.toLong().toString()
-                                        } else matchedProduct.price.toString()
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Steppers
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            FilledTonalIconButton(
+                                onClick = {
+                                    val current = quantity.toDoubleOrNull() ?: 0.0
+                                    val next = (current - 0.5).coerceAtLeast(0.0)
+                                    quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
+                                },
+                                modifier = Modifier.size(30.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = null, modifier = Modifier.size(14.dp))
+                            }
+                            FilledTonalIconButton(
+                                onClick = {
+                                    val current = quantity.toDoubleOrNull() ?: 0.0
+                                    val next = current + 0.5
+                                    quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
+                                },
+                                modifier = Modifier.size(30.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                            }
+                        }
+
+                        TextButton(
+                            onClick = { quantity = "" },
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Text("Reset", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+
+                    // Price helper
+                    if (matchedProduct != null && matchedProduct.price > 0 && unitPrice != matchedProduct.price.toLong().toString()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Harga Master: ${currencyFormatter.format(matchedProduct.price).replace("Rp", "Rp ")}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            TextButton(
+                                onClick = {
+                                    unitPrice = if (matchedProduct.price % 1.0 == 0.0) {
+                                        matchedProduct.price.toLong().toString()
+                                    } else matchedProduct.price.toString()
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text("Gunakan Harga Master", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(4.dp))
+
+                    // Add to List Button
+                    Button(
+                        onClick = {
+                            if (selectedProduct.isNotBlank() && parsedQty > 0 && parsedPrice >= 0) {
+                                val newItem = ManualCartItem(
+                                    productName = selectedProduct.trim(),
+                                    quantity = parsedQty,
+                                    unitPrice = parsedPrice,
+                                    unit = activeUnit
+                                )
+                                manualItemsList = manualItemsList + newItem
+                                selectedProduct = ""
+                                quantity = ""
+                                unitPrice = ""
+                                Toast.makeText(context, "Item ditambahkan ke daftar kulakan", Toast.LENGTH_SHORT).show()
+                            } else {
+                                Toast.makeText(context, "Lengkapi nama produk, jumlah, dan harga terlebih dahulu", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(50.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Tambah ke Daftar Kulakan", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                    }
+                }
+            }
+
+            // --- 5.1 MULTI-ITEM CART LIST & ADD BUTTON ---
+            Button(
+                onClick = {
+                    if (selectedProduct.isNotBlank() && parsedQty > 0 && parsedPrice >= 0) {
+                        val newItem = ManualCartItem(
+                            productName = selectedProduct.trim(),
+                            quantity = parsedQty,
+                            unitPrice = parsedPrice,
+                            unit = activeUnit
+                        )
+                        manualItemsList = manualItemsList + newItem
+                        selectedProduct = ""
+                        quantity = ""
+                        unitPrice = ""
+                        Toast.makeText(context, "Item ditambahkan ke daftar kulakan", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Lengkapi nama produk, jumlah, dan harga terlebih dahulu", Toast.LENGTH_SHORT).show()
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(50.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = primaryColor.copy(alpha = 0.15f),
+                    contentColor = primaryColor
+                )
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Tambah Barang ke Daftar Kulakan", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+            }
+
+            if (manualItemsList.isNotEmpty()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = surfaceColor),
+                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(18.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .background(primaryColor, shape = CircleShape)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "DAFTAR BARANG KULAKAN (${manualItemsList.size})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = primaryColor,
+                                    letterSpacing = 1.sp
+                                )
+                            }
+                            TextButton(onClick = { manualItemsList = emptyList() }) {
+                                Text("Hapus Semua", fontSize = 11.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+
+                        manualItemsList.forEach { cartItem ->
+                            Surface(
+                                color = surfaceVariant.copy(alpha = 0.35f),
+                                shape = RoundedCornerShape(14.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text("Gunakan Harga Master", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = cartItem.productName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 15.sp,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Spacer(Modifier.height(3.dp))
+                                        Text(
+                                            text = "${cartItem.quantity} ${cartItem.unit} × ${currencyFormatter.format(cartItem.unitPrice).replace("Rp", "Rp ")}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = currencyFormatter.format(cartItem.quantity * cartItem.unitPrice).replace("Rp", "Rp "),
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 14.sp,
+                                            color = primaryColor
+                                        )
+                                        Spacer(Modifier.width(10.dp))
+                                        IconButton(
+                                            onClick = { manualItemsList = manualItemsList.filter { it.id != cartItem.id } },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                Icons.Default.Clear,
+                                                contentDescription = "Hapus",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
