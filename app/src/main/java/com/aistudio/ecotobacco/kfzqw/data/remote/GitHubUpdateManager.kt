@@ -9,7 +9,7 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.core.content.FileProvider
-import com.aistudio.ecotobacco.kfzqw.data.utils.AppLogger
+import com.aistudio.ecotobacco.kfzqw.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,7 +32,8 @@ data class GitHubReleaseInfo(
     val downloadUrl: String,
     val apkFileName: String,
     val apkSize: Long,
-    val htmlUrl: String
+    val htmlUrl: String,
+    val hasDirectApk: Boolean = true
 )
 
 sealed class InAppUpdateState {
@@ -61,6 +62,16 @@ class GitHubUpdateManager(private val context: Context) {
 
     private val _updateState = MutableStateFlow<InAppUpdateState>(InAppUpdateState.Idle)
     val updateState: StateFlow<InAppUpdateState> = _updateState.asStateFlow()
+
+    private val _targetRepo = MutableStateFlow(
+        prefs.getString(PREF_GITHUB_REPO, DEFAULT_REPO)?.takeIf { it.isNotBlank() } ?: DEFAULT_REPO
+    )
+    val targetRepo: StateFlow<String> = _targetRepo.asStateFlow()
+
+    private val _autoCheckEnabled = MutableStateFlow(
+        prefs.getBoolean(PREF_AUTO_CHECK_ENABLED, true)
+    )
+    val autoCheckEnabled: StateFlow<Boolean> = _autoCheckEnabled.asStateFlow()
 
     companion object {
         const val DEFAULT_REPO = "ekofebriarianto/eco-tobacco"
@@ -119,20 +130,27 @@ class GitHubUpdateManager(private val context: Context) {
     }
 
     fun getTargetRepository(): String {
-        return prefs.getString(PREF_GITHUB_REPO, DEFAULT_REPO) ?: DEFAULT_REPO
+        return _targetRepo.value
     }
 
     fun setTargetRepository(repo: String) {
-        val trimmed = repo.trim().removePrefix("https://github.com/").removePrefix("github.com/")
-        prefs.edit().putString(PREF_GITHUB_REPO, trimmed).apply()
+        val sanitized = repo.trim()
+            .removePrefix("https://github.com/")
+            .removePrefix("http://github.com/")
+            .removePrefix("github.com/")
+            .trim('/')
+            .ifBlank { DEFAULT_REPO }
+        prefs.edit().putString(PREF_GITHUB_REPO, sanitized).apply()
+        _targetRepo.value = sanitized
     }
 
     fun isAutoCheckEnabled(): Boolean {
-        return prefs.getBoolean(PREF_AUTO_CHECK_ENABLED, true)
+        return _autoCheckEnabled.value
     }
 
     fun setAutoCheckEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(PREF_AUTO_CHECK_ENABLED, enabled).apply()
+        _autoCheckEnabled.value = enabled
     }
 
     fun resetState() {
@@ -143,6 +161,10 @@ class GitHubUpdateManager(private val context: Context) {
      * Memeriksa rilis terbaru dari GitHub API
      */
     suspend fun checkForUpdates(currentVersion: String, silent: Boolean = false): GitHubReleaseInfo? {
+        if (_updateState.value is InAppUpdateState.Checking || _updateState.value is InAppUpdateState.Downloading) {
+            return null
+        }
+
         return withContext(Dispatchers.IO) {
             try {
                 if (!silent) {
@@ -158,72 +180,82 @@ class GitHubUpdateManager(private val context: Context) {
                     .header("User-Agent", "EcoTobacco-Android")
                     .build()
 
-                val response = client.newCall(request).execute()
-                prefs.edit().putLong(PREF_LAST_CHECK_TIME, System.currentTimeMillis()).apply()
+                client.newCall(request).execute().use { response ->
+                    prefs.edit().putLong(PREF_LAST_CHECK_TIME, System.currentTimeMillis()).apply()
 
-                if (!response.isSuccessful) {
-                    val code = response.code
-                    if (!silent) {
-                        _updateState.value = InAppUpdateState.Error("Gagal memeriksa update (HTTP $code). Pastikan repository '$repo' publik atau periksa koneksi.")
+                    if (!response.isSuccessful) {
+                        val code = response.code
+                        if (!silent) {
+                            _updateState.value = InAppUpdateState.Error(
+                                "Gagal memeriksa update (HTTP $code). Pastikan repository '$repo' publik, memiliki GitHub Release, atau periksa koneksi."
+                            )
+                        }
+                        return@withContext null
                     }
-                    return@withContext null
-                }
 
-                val responseBody = response.body?.string() ?: ""
-                val json = JSONObject(responseBody)
+                    val responseBody = response.body?.string().orEmpty()
+                    if (responseBody.isBlank()) {
+                        if (!silent) {
+                            _updateState.value = InAppUpdateState.Error("Respons dari GitHub kosong.")
+                        }
+                        return@withContext null
+                    }
 
-                val tagName = json.optString("tag_name", "")
-                val cleanTagName = tagName.removePrefix("v").removePrefix("V").trim()
-                val title = json.optString("name", "Pembaruan Baru")
-                val body = json.optString("body", "Peningkatan performa dan perbaikan sistem.")
-                val publishedAt = json.optString("published_at", "")
-                val htmlUrl = json.optString("html_url", "")
+                    val json = JSONObject(responseBody)
 
-                // Cari asset APK di release
-                var downloadUrl = ""
-                var apkFileName = "eco-tobacco-v$cleanTagName.apk"
-                var apkSize = 0L
+                    val tagName = json.optString("tag_name", "")
+                    val cleanTagName = tagName.removePrefix("v").removePrefix("V").trim()
+                    val title = json.optString("name", "Pembaruan Baru").ifBlank { "Pembaruan Baru" }
+                    val body = json.optString("body", "Peningkatan performa dan perbaikan sistem.")
+                        .ifBlank { "Peningkatan performa dan perbaikan sistem." }
+                    val publishedAt = json.optString("published_at", "")
+                    val htmlUrl = json.optString("html_url", "")
 
-                val assetsArray = json.optJSONArray("assets")
-                if (assetsArray != null && assetsArray.length() > 0) {
-                    for (i in 0 until assetsArray.length()) {
-                        val asset = assetsArray.getJSONObject(i)
-                        val name = asset.optString("name", "")
-                        if (name.endsWith(".apk", ignoreCase = true)) {
-                            downloadUrl = asset.optString("browser_download_url", "")
-                            apkFileName = name
-                            apkSize = asset.optLong("size", 0L)
-                            break
+                    // Cari asset APK di release
+                    var downloadUrl = ""
+                    var apkFileName = "eco-tobacco-v$cleanTagName.apk"
+                    var apkSize = 0L
+
+                    val assetsArray = json.optJSONArray("assets")
+                    if (assetsArray != null && assetsArray.length() > 0) {
+                        for (i in 0 until assetsArray.length()) {
+                            val asset = assetsArray.getJSONObject(i)
+                            val name = asset.optString("name", "")
+                            if (name.endsWith(".apk", ignoreCase = true)) {
+                                downloadUrl = asset.optString("browser_download_url", "")
+                                apkFileName = name
+                                apkSize = asset.optLong("size", 0L)
+                                break
+                            }
                         }
                     }
-                }
 
-                // Fallback jika tidak ada asset APK langsung, gunakan link web release
-                if (downloadUrl.isEmpty()) {
-                    downloadUrl = htmlUrl
-                }
+                    val hasDirectApk = downloadUrl.isNotEmpty()
+                    val resolvedDownloadUrl = if (hasDirectApk) downloadUrl else htmlUrl
 
-                val release = GitHubReleaseInfo(
-                    tagName = tagName,
-                    versionName = cleanTagName,
-                    title = title,
-                    releaseNotes = body,
-                    publishedAt = publishedAt,
-                    downloadUrl = downloadUrl,
-                    apkFileName = apkFileName,
-                    apkSize = apkSize,
-                    htmlUrl = htmlUrl
-                )
+                    val release = GitHubReleaseInfo(
+                        tagName = tagName,
+                        versionName = cleanTagName,
+                        title = title,
+                        releaseNotes = body,
+                        publishedAt = publishedAt,
+                        downloadUrl = resolvedDownloadUrl,
+                        apkFileName = apkFileName,
+                        apkSize = apkSize,
+                        htmlUrl = htmlUrl,
+                        hasDirectApk = hasDirectApk
+                    )
 
-                val isNewer = isVersionNewer(cleanTagName, currentVersion)
-                if (isNewer) {
-                    _updateState.value = InAppUpdateState.UpdateAvailable(release)
-                    return@withContext release
-                } else {
-                    if (!silent) {
-                        _updateState.value = InAppUpdateState.UpToDate
+                    val isNewer = isVersionNewer(cleanTagName, currentVersion)
+                    if (isNewer) {
+                        _updateState.value = InAppUpdateState.UpdateAvailable(release)
+                        return@withContext release
+                    } else {
+                        if (!silent) {
+                            _updateState.value = InAppUpdateState.UpToDate
+                        }
+                        return@withContext null
                     }
-                    return@withContext null
                 }
             } catch (e: Exception) {
                 Log.e("GitHubUpdateManager", "Error checking update", e)
@@ -239,7 +271,15 @@ class GitHubUpdateManager(private val context: Context) {
      * Download file APK langsung di dalam aplikasi dengan progress bar
      */
     suspend fun downloadUpdateInApp(release: GitHubReleaseInfo): File? {
+        if (!release.hasDirectApk || release.downloadUrl.isBlank()) {
+            _updateState.value = InAppUpdateState.Error(
+                "Rilis ${release.tagName} belum melampirkan file .apk. Silakan unggah APK ke Assets rilis GitHub atau unduh manual via browser."
+            )
+            return null
+        }
+
         return withContext(Dispatchers.IO) {
+            var targetFile: File? = null
             try {
                 _updateState.value = InAppUpdateState.Downloading(0, 0L, release.apkSize)
 
@@ -251,7 +291,8 @@ class GitHubUpdateManager(private val context: Context) {
                     updateDir.mkdirs()
                 }
 
-                val targetFile = File(updateDir, release.apkFileName)
+                val safeFileName = File(release.apkFileName).name.ifBlank { "eco-tobacco-update.apk" }
+                targetFile = File(updateDir, safeFileName)
                 if (targetFile.exists()) {
                     targetFile.delete()
                 }
@@ -261,46 +302,60 @@ class GitHubUpdateManager(private val context: Context) {
                     .header("User-Agent", "EcoTobacco-Android")
                     .build()
 
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful || response.body == null) {
-                    _updateState.value = InAppUpdateState.Error("Gagal mengunduh APK (HTTP ${response.code})")
-                    return@withContext null
-                }
-
-                val body = response.body!!
-                val totalBytes = if (body.contentLength() > 0) body.contentLength() else release.apkSize
-                var downloadedBytes = 0L
-
-                val inputStream: InputStream = body.byteStream()
-                val outputStream = FileOutputStream(targetFile)
-
-                val buffer = ByteArray(8192)
-                var bytesRead: Int
-                var lastPercent = 0
-
-                while (inputStream.read(buffer).also { bytesRead = it } != -1) {
-                    outputStream.write(buffer, 0, bytesRead)
-                    downloadedBytes += bytesRead
-
-                    val percent = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).toInt() else 0
-                    if (percent != lastPercent) {
-                        lastPercent = percent
-                        _updateState.value = InAppUpdateState.Downloading(percent, downloadedBytes, totalBytes)
+                client.newCall(request).execute().use { response ->
+                    val body = response.body
+                    if (!response.isSuccessful || body == null) {
+                        _updateState.value = InAppUpdateState.Error("Gagal mengunduh APK (HTTP ${response.code})")
+                        return@withContext null
                     }
+
+                    val contentType = body.contentType()?.toString().orEmpty()
+                    if (contentType.contains("text/html", ignoreCase = true)) {
+                        _updateState.value = InAppUpdateState.Error(
+                            "URL unduhan mengembalikan halaman HTML, bukan file APK."
+                        )
+                        return@withContext null
+                    }
+
+                    val totalBytes = if (body.contentLength() > 0) body.contentLength() else release.apkSize
+                    var downloadedBytes = 0L
+
+                    body.byteStream().use { inputStream ->
+                        FileOutputStream(targetFile).use { outputStream ->
+                            val buffer = ByteArray(8192)
+                            var bytesRead: Int
+                            var lastPercent = 0
+
+                            while (inputStream.read(buffer).also { bytesRead = it } != -1) {
+                                outputStream.write(buffer, 0, bytesRead)
+                                downloadedBytes += bytesRead
+
+                                val percent = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).toInt() else 0
+                                if (percent != lastPercent) {
+                                    lastPercent = percent
+                                    _updateState.value = InAppUpdateState.Downloading(percent, downloadedBytes, totalBytes)
+                                }
+                            }
+                            outputStream.flush()
+                        }
+                    }
+
+                    if (!targetFile.exists() || targetFile.length() == 0L) {
+                        targetFile.delete()
+                        _updateState.value = InAppUpdateState.Error("File APK hasil unduhan kosong atau gagal disimpan.")
+                        return@withContext null
+                    }
+
+                    // Simpan path untuk auto-delete saat aplikasi dibuka berikutnya
+                    prefs.edit().putString(PREF_PENDING_APK_PATH, targetFile.absolutePath).apply()
+
+                    _updateState.value = InAppUpdateState.ReadyToInstall(targetFile, release)
+                    return@withContext targetFile
                 }
-
-                outputStream.flush()
-                outputStream.close()
-                inputStream.close()
-
-                // Simpan path untuk auto-delete saat aplikasi dibuka berikutnya
-                prefs.edit().putString(PREF_PENDING_APK_PATH, targetFile.absolutePath).apply()
-
-                _updateState.value = InAppUpdateState.ReadyToInstall(targetFile, release)
-                return@withContext targetFile
             } catch (e: Exception) {
                 Log.e("GitHubUpdateManager", "Error downloading APK update", e)
-                _updateState.value = InAppUpdateState.Error("Gagal mengunduh file update: ${e.localizedMessage}")
+                targetFile?.let { if (it.exists()) it.delete() }
+                _updateState.value = InAppUpdateState.Error("Gagal mengunduh file update: ${e.localizedMessage ?: "Terjadi kesalahan"}")
                 return@withContext null
             }
         }
@@ -309,24 +364,25 @@ class GitHubUpdateManager(private val context: Context) {
     /**
      * Memulai proses instalasi APK pada sistem Android.
      * Menggunakan FileProvider dengan fallback aman ke StrictMode VM policy.
+     * @return true jika intent installer berhasil dibuka, false jika menunggu izin atau gagal.
      */
-    fun installApk(apkFile: File) {
+    fun installApk(apkFile: File): Boolean {
         try {
             if (!apkFile.exists() || apkFile.length() == 0L) {
                 Toast.makeText(context, "File instalasi tidak ditemukan atau rusak.", Toast.LENGTH_SHORT).show()
-                return
+                return false
             }
 
             // Periksa izin instalasi pihak ketiga pada Android 8.0+
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (!context.packageManager.canRequestPackageInstalls()) {
-                    Toast.makeText(context, "Mohon izinkan pemasangan aplikasi dari sumber ini.", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Mohon izinkan pemasangan aplikasi dari sumber ini, lalu ketuk Pasang Sekarang lagi.", Toast.LENGTH_LONG).show()
                     val permissionIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
                         data = Uri.parse("package:${context.packageName}")
                         flags = Intent.FLAG_ACTIVITY_NEW_TASK
                     }
                     context.startActivity(permissionIntent)
-                    return
+                    return false
                 }
             }
 
@@ -351,9 +407,11 @@ class GitHubUpdateManager(private val context: Context) {
 
             // Jadwalkan auto-delete file installer setelah user menginstal
             AppLogger.d("Install intent diluncurkan. File '${apkFile.name}' siap dihapus otomatis setelah instalasi.")
+            return true
         } catch (e: Exception) {
             Log.e("GitHubUpdateManager", "Gagal meluncurkan installer APK", e)
             Toast.makeText(context, "Gagal membuka installer APK: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            return false
         }
     }
 

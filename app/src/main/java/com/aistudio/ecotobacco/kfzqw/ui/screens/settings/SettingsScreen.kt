@@ -107,6 +107,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.foundation.layout.offset
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -121,6 +123,7 @@ import com.aistudio.ecotobacco.kfzqw.data.remote.DriveBackupFile
 import com.aistudio.ecotobacco.kfzqw.data.remote.SyncStatus
 import com.aistudio.ecotobacco.kfzqw.data.remote.InAppUpdateState
 import com.aistudio.ecotobacco.kfzqw.data.remote.GitHubReleaseInfo
+import com.aistudio.ecotobacco.kfzqw.ui.AppChangelog
 import com.aistudio.ecotobacco.kfzqw.ui.Routes
 import com.aistudio.ecotobacco.kfzqw.ui.components.ThemeOptionItem
 import com.aistudio.ecotobacco.kfzqw.ui.theme.LocalUiConfig
@@ -149,10 +152,12 @@ fun SettingsScreen(
     val firestoreLastSync by viewModel.firestoreLastSync.collectAsState()
     val firestoreMessage by viewModel.firestoreMessage.collectAsState()
     val updateState by viewModel.updateState.collectAsState()
+    val currentGitHubRepo by viewModel.githubRepo.collectAsState()
+    val isAutoCheckUpdateEnabled by viewModel.autoCheckUpdateEnabled.collectAsState()
 
-    var isAutoSync by remember { mutableStateOf(viewModel.syncHelper.isAutoSyncEnabled) }
+    var isAutoSync by remember { mutableStateOf<Boolean>(viewModel.syncHelper.isAutoSyncEnabled) }
     var showRepoSettingsDialog by remember { mutableStateOf(false) }
-    var repoSettingInput by remember { mutableStateOf(viewModel.getGitHubRepo()) }
+    var repoSettingInput by remember(currentGitHubRepo) { mutableStateOf(currentGitHubRepo) }
     val autoBackupInfo by viewModel.autoBackupInfo.collectAsState()
     var showRestoreAutoBackupDialog by remember { mutableStateOf(false) }
     var isManualBackupInProgress by remember { mutableStateOf(false) }
@@ -433,7 +438,7 @@ fun SettingsScreen(
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.weight(1f),
                                     contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
-                                {
+                                ) {
                                     Icon(Icons.Default.CloudUpload, null, modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("Kirim ke Web", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -444,7 +449,7 @@ fun SettingsScreen(
                                     shape = RoundedCornerShape(10.dp),
                                     modifier = Modifier.weight(1f),
                                     contentPadding = androidx.compose.foundation.layout.PaddingValues(6.dp)
-                                {
+                                ) {
                                     Icon(Icons.Default.CloudDownload, null, modifier = Modifier.size(14.dp))
                                     Spacer(Modifier.width(4.dp))
                                     Text("Tarik dari Web", fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -663,7 +668,7 @@ fun SettingsScreen(
                     Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         PremiumSettingItem(
                             title = "Eco Tobacco v${Routes.APP_VERSION}",
-                            subtitle = "Ketuk untuk melihat catatan rilis (What's New)",
+                            subtitle = "Ketuk untuk melihat What's New & Changelog",
                             icon = Icons.Default.Info,
                             onClick = { showWhatsNew = true }
                         )
@@ -682,9 +687,9 @@ fun SettingsScreen(
 
                         PremiumSettingItem(
                             title = "Target Repository GitHub",
-                            subtitle = viewModel.getGitHubRepo(),
+                            subtitle = currentGitHubRepo,
                             icon = Icons.Default.Computer,
-                            onClick = { repoSettingInput = viewModel.getGitHubRepo(); showRepoSettingsDialog = true }
+                            onClick = { repoSettingInput = currentGitHubRepo; showRepoSettingsDialog = true }
                         )
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
@@ -699,7 +704,6 @@ fun SettingsScreen(
                         )
                     }
                 }
-            }
             }
             
             // Footer
@@ -803,18 +807,84 @@ fun SettingsScreen(
     }
 
     if (showWhatsNew) {
+        val latestRelease = AppChangelog.latest
         AlertDialog(
             onDismissRequest = { showWhatsNew = false },
-            title = { Text("App Information", fontWeight = FontWeight.ExtraBold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("ECO TOBACCO v${Routes.APP_VERSION}", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                    Text("A professional tobacco procurement management app with cloud synchronization and AI-powered receipt scanning.", style = MaterialTheme.typography.bodyMedium)
-                    HorizontalDivider(Modifier.padding(vertical = 4.dp))
-                    Text("Developer: ekofebriarianto", style = MaterialTheme.typography.bodySmall)
+            title = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text("What's New & Changelog", fontWeight = FontWeight.ExtraBold)
+                    Text(
+                        "Eco Tobacco v${Routes.APP_VERSION} • ${latestRelease.date}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             },
-            confirmButton = { Button(onClick = { showWhatsNew = false }) { Text("Close") } },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                "Sorotan v${latestRelease.version}",
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                latestRelease.headline,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            latestRelease.highlights.forEach { highlight ->
+                                Text(
+                                    "• $highlight",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    AppChangelog.releases.forEachIndexed { index, release ->
+                        if (index > 0) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                        }
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                "v${release.version} (Build ${release.buildNumber}) • ${release.date}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            release.changes.forEach { item ->
+                                Text(
+                                    "– $item",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+
+                    HorizontalDivider(Modifier.padding(top = 4.dp))
+                    Text("Developer: ekofebriarianto", style = MaterialTheme.typography.labelSmall)
+                }
+            },
+            confirmButton = { Button(onClick = { showWhatsNew = false }) { Text("Tutup") } },
             shape = RoundedCornerShape(28.dp)
         )
     }
@@ -845,7 +915,7 @@ fun SettingsScreen(
                     ) {
                         Text("Auto-cek saat aplikasi dibuka", style = MaterialTheme.typography.bodyMedium)
                         Switch(
-                            checked = viewModel.isAutoCheckUpdateEnabled(),
+                            checked = isAutoCheckUpdateEnabled,
                             onCheckedChange = { viewModel.setAutoCheckUpdateEnabled(it) }
                         )
                     }
@@ -926,16 +996,40 @@ fun SettingsScreen(
                             maxLines = 6
                         )
                         HorizontalDivider()
-                        Text(
-                            text = "File akan diunduh langsung di dalam aplikasi dan otomatis dihapus setelah instalasi selesai.",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                        if (state.release.hasDirectApk) {
+                            Text(
+                                text = "File akan diunduh langsung di dalam aplikasi dan otomatis dihapus setelah instalasi selesai.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        } else {
+                            Text(
+                                text = "Rilis ini belum melampirkan file .apk langsung. Anda dapat membukanya di browser.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                     }
                 },
                 confirmButton = {
-                    Button(onClick = { viewModel.downloadAndInstallUpdate(state.release) }) {
-                        Text("Unduh & Pasang Sekarang")
+                    if (state.release.hasDirectApk) {
+                        Button(onClick = { viewModel.downloadAndInstallUpdate(state.release) }) {
+                            Text("Unduh & Pasang Sekarang")
+                        }
+                    } else {
+                        Button(onClick = {
+                            val targetUrl = state.release.htmlUrl
+                            if (targetUrl.isNotBlank()) {
+                                try {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
+                                } catch (e: Exception) {
+                                    Toast.makeText(context, "Tidak dapat membuka browser.", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                            viewModel.dismissUpdateDialog()
+                        }) {
+                            Text("Buka Halaman Rilis")
+                        }
                     }
                 },
                 dismissButton = {
@@ -973,7 +1067,7 @@ fun SettingsScreen(
             )
             val mbDownloaded = state.bytesDownloaded / (1024f * 1024f)
             val mbTotal = state.totalBytes / (1024f * 1024f)
-            val mbText = if (state.totalBytes > 0) String.format("%.1f MB / %.1f MB", mbDownloaded, mbTotal) else String.format("%.1f MB", mbDownloaded)
+            val mbText = if (state.totalBytes > 0) String.format(Locale.US, "%.1f MB / %.1f MB", mbDownloaded, mbTotal) else String.format(Locale.US, "%.1f MB", mbDownloaded)
 
             AlertDialog(
                 onDismissRequest = { /* Dipertahankan hingga selesai unduh */ },
@@ -1006,7 +1100,7 @@ fun SettingsScreen(
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier
                                     .size(34.dp)
-                                    .androidx.compose.ui.draw.offset(y = bounceY.dp)
+                                    .offset(y = bounceY.dp)
                             )
                         }
 
@@ -1122,8 +1216,9 @@ fun SettingsScreen(
                 },
                 confirmButton = {
                     Button(onClick = {
-                        viewModel.installDownloadedApk(state.apkFile)
-                        viewModel.dismissUpdateDialog()
+                        if (viewModel.installDownloadedApk(state.apkFile)) {
+                            viewModel.dismissUpdateDialog()
+                        }
                     }) {
                         Text("Pasang Sekarang")
                     }

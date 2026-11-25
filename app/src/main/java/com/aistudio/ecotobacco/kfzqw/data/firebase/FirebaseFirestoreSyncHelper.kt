@@ -492,7 +492,7 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
 
                 repository.insertProduct(
                     ProductEntity(
-                        id = doc.getLong("id")?.toInt() ?: 0,
+                        id = doc.getLong("id") ?: 0L,
                         name = name,
                         price = price,
                         unit = unit,
@@ -515,12 +515,11 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                 val date = doc.getLong("date") ?: System.currentTimeMillis()
                 val supplier = doc.getString("supplier") ?: ""
                 val unit = doc.getString("unit") ?: "kg"
-                val isDeletedInt = doc.getLong("isDeleted")?.toInt()
-                    ?: if (doc.getBoolean("isDeleted") == true) 1 else 0
+                val isDeletedBool = doc.getBoolean("isDeleted") ?: false
 
                 repository.insertTransaction(
                     TransactionEntity(
-                        id = doc.getLong("id")?.toInt() ?: 0,
+                        id = doc.getLong("id") ?: 0L,
                         date = date,
                         productName = productName,
                         quantity = quantity,
@@ -528,7 +527,7 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                         total = total,
                         supplier = supplier,
                         unit = unit,
-                        isDeleted = isDeletedInt
+                        isDeleted = isDeletedBool
                     )
                 )
                 restoredTransactions++
@@ -541,7 +540,7 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                 val supplierName = doc.getString("supplierName") ?: ""
                 val date = doc.getLong("date") ?: System.currentTimeMillis()
                 val plan = ProcurementPlanEntity(
-                    id = doc.getLong("id")?.toInt() ?: 0,
+                    id = doc.getLong("id") ?: 0L,
                     date = date,
                     supplierName = supplierName
                 )
@@ -550,7 +549,7 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                 val itemsData = doc.get("items") as? List<Map<String, Any>>
                 val items = itemsData?.map { itemMap ->
                     ProcurementItemEntity(
-                        id = (itemMap["id"] as? Number)?.toInt() ?: 0,
+                        id = (itemMap["id"] as? Number)?.toLong() ?: 0L,
                         planId = plan.id,
                         productName = (itemMap["productName"] as? String) ?: "",
                         targetQuantity = (itemMap["targetQuantity"] as? Number)?.toDouble() ?: 0.0,
@@ -649,8 +648,8 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
         }
     }
 
-    suspend fun deleteProduct(userId: String, productId: Int) = withContext(Dispatchers.IO) {
-        if (userId.isBlank() || productId <= 0) return@withContext
+    suspend fun deleteProduct(userId: String, productId: Long) = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || productId <= 0L) return@withContext
         val fs = firestore ?: return@withContext
         try {
             val userDoc = fs.collection("users").document(userId)
@@ -660,13 +659,13 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
         }
     }
 
-    suspend fun deleteTransaction(userId: String, txId: Int) = withContext(Dispatchers.IO) {
-        if (userId.isBlank() || txId <= 0) return@withContext
+    suspend fun deleteTransaction(userId: String, txId: Long) = withContext(Dispatchers.IO) {
+        if (userId.isBlank() || txId <= 0L) return@withContext
         val fs = firestore ?: return@withContext
         try {
             val userDoc = fs.collection("users").document(userId)
             val txDoc = userDoc.collection("transactions").document(txId.toString())
-            txDoc.update("isDeleted", 1).await()
+            txDoc.update("isDeleted", true).await()
         } catch (e: Exception) {
             Log.w("FirestoreSyncHelper", "Delete transaction notice: ${e.message}")
         }

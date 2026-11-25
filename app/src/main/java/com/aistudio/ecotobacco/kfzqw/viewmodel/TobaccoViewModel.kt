@@ -18,6 +18,7 @@ import android.widget.Toast
 import androidx.core.content.edit
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.aistudio.ecotobacco.kfzqw.BuildConfig
 import com.aistudio.ecotobacco.kfzqw.data.firebase.FirebaseAuthHelper
 import com.aistudio.ecotobacco.kfzqw.data.firebase.FirebaseFirestoreSyncHelper
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.CategoryEntity
@@ -40,8 +41,9 @@ import com.aistudio.ecotobacco.kfzqw.data.remote.GitHubUpdateManager
 import com.aistudio.ecotobacco.kfzqw.data.remote.GitHubReleaseInfo
 import com.aistudio.ecotobacco.kfzqw.data.remote.InAppUpdateState
 import com.aistudio.ecotobacco.kfzqw.data.repository.TobaccoRepository
-import com.aistudio.ecotobacco.kfzqw.data.utils.AppLogger
-import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
+import com.aistudio.ecotobacco.kfzqw.utils.AppLogger
+import com.aistudio.ecotobacco.kfzqw.utils.LocalScanner
+import com.aistudio.ecotobacco.kfzqw.scanner.model.ScannedItem
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
@@ -91,6 +93,8 @@ class TobaccoViewModel(
 
     val githubUpdateManager by lazy { GitHubUpdateManager(getApplication()) }
     val updateState: StateFlow<InAppUpdateState> = githubUpdateManager.updateState
+    val githubRepo: StateFlow<String> = githubUpdateManager.targetRepo
+    val autoCheckUpdateEnabled: StateFlow<Boolean> = githubUpdateManager.autoCheckEnabled
 
     private val appPrefs = getApplication<Application>().getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
     
@@ -251,10 +255,7 @@ class TobaccoViewModel(
     }
 
     // --- StateFlows ---
-    val categories = repository
-        .getAllCategories().stateIn(viewModelScope,
-            SharingStarted.WhileSubscribed(5000),
-            emptyList())
+    val categories = repository.allCategories.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val products = repository.allProducts.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val transactions = repository.allTransactions.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     val procurementPlans = repository.allProcurementPlans.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -759,7 +760,7 @@ class TobaccoViewModel(
             try {
                 GitHubUpdateManager.cleanupOldOrPendingApkFiles(getApplication())
                 if (githubUpdateManager.isAutoCheckEnabled()) {
-                    checkForGitHubUpdate(silent = true)
+                    checkForGitHubUpdate(currentVersion = BuildConfig.VERSION_NAME, silent = true)
                 }
             } catch (e: Exception) {
                 AppLogger.d("GitHub auto-check init error: ${e.message}")
@@ -783,7 +784,7 @@ class TobaccoViewModel(
     }
 
     // --- GITHUB IN-APP UPDATE METHODS ---
-    fun checkForGitHubUpdate(currentVersion: String = "4.3", silent: Boolean = false) {
+    fun checkForGitHubUpdate(currentVersion: String = BuildConfig.VERSION_NAME, silent: Boolean = false) {
         viewModelScope.launch {
             githubUpdateManager.checkForUpdates(currentVersion = currentVersion, silent = silent)
         }
@@ -798,8 +799,8 @@ class TobaccoViewModel(
         }
     }
 
-    fun installDownloadedApk(apkFile: File) {
-        githubUpdateManager.installApk(apkFile)
+    fun installDownloadedApk(apkFile: File): Boolean {
+        return githubUpdateManager.installApk(apkFile)
     }
 
     fun dismissUpdateDialog() {
@@ -1190,15 +1191,15 @@ class TobaccoViewModel(
                 }
 
                 onProgress?.invoke("Mengecek backup di cloud...")
-                val remoteJson = syncHelper.downloadBackupSync(fileId)
+                val remoteJson = syncHelper.downloadBackupSync(fileId ?: "")
                 if (!remoteJson.isNullOrBlank()) {
                     onProgress?.invoke("Sinkronisasi data...")
                     AppLogger.d("Sync", "Remote backup found, length: ${remoteJson.length}")
-                    val remoteBundle = adapter.fromJson(remoteJson)
+                    val remoteBundle = adapter.fromJson(remoteJson as String)
                     if (remoteBundle != null) {
                         AppLogger.i("Sync", "Restoring ${remoteBundle.transactions.size} transactions and ${remoteBundle.products.size} products from cloud.")
                         
-                        val combinedDeleted = (getDeletedTransactionKeys() + (remoteBundle.deletedTransactions ?: emptyList())).toSet()
+                        val combinedDeleted = getDeletedTransactionKeys().plus(remoteBundle.deletedTransactions ?: emptyList()).toSet()
                         addDeletedTransactionKeys(combinedDeleted)
                         
                         val activeLocal = localTransactionsData.filter { tx ->
@@ -1351,7 +1352,7 @@ class TobaccoViewModel(
                     total = it.total,
                     supplier = it.supplier ?: "",
                     unit = it.unit ?: "kg",
-                    isDeleted = if (it.isDeleted == true) 1 else 0
+                    isDeleted = it.isDeleted == true
                 )
             }
         return MergedResult(newInsertions, local + newInsertions)
@@ -1403,7 +1404,7 @@ class TobaccoViewModel(
         }
         triggerAutoSync(forceOverwriteRemote = true) 
     }
-    fun updateProduct(id: Int, name: String, price: Double, unit: String = "kg", sellingPrice: Double = 0.0, sellingUnit: String = "pcs", contentQuantity: Double = 1.0, category: String = "", subCategory: String = "Umum") = viewModelScope.launch { 
+    fun updateProduct(id: Long, name: String, price: Double, unit: String = "kg", sellingPrice: Double = 0.0, sellingUnit: String = "pcs", contentQuantity: Double = 1.0, category: String = "", subCategory: String = "Umum") = viewModelScope.launch { 
         removeDeletedProductNames(listOf(name))
         val product = ProductEntity(id = id, name = name, price = price, unit = unit, sellingPrice = sellingPrice, sellingUnit = sellingUnit, contentQuantity = contentQuantity, category = category, subCategory = subCategory)
         repository.updateProduct(product)
@@ -1412,7 +1413,7 @@ class TobaccoViewModel(
         }
         triggerAutoSync(forceOverwriteRemote = true) 
     }
-    fun deleteProduct(id: Int) = viewModelScope.launch {
+    fun deleteProduct(id: Long) = viewModelScope.launch {
         val product = repository.getProductById(id)
         if (product != null) {
             addDeletedProductNames(listOf(product.name))
@@ -1440,7 +1441,7 @@ class TobaccoViewModel(
         }
         triggerAutoSync(forceOverwriteRemote = true)
     }
-    fun updateTransaction(id: Int, date: Long, productName: String, quantity: Double, unitPrice: Double, supplier: String = "", unit: String = "kg") = viewModelScope.launch {
+    fun updateTransaction(id: Long, date: Long, productName: String, quantity: Double, unitPrice: Double, supplier: String = "", unit: String = "kg") = viewModelScope.launch {
         repository.updateTransaction(
             TransactionEntity(
                 id = id,
@@ -1455,7 +1456,7 @@ class TobaccoViewModel(
         )
         triggerAutoSync(forceOverwriteRemote = true)
     }
-    fun deleteTransaction(id: Int) = viewModelScope.launch {
+    fun deleteTransaction(id: Long) = viewModelScope.launch {
         val tx = repository.getTransactionById(id)
         if (tx != null) {
             addDeletedTransactionKey(getTransactionKey(tx.date, tx.productName, tx.quantity, tx.unitPrice, tx.supplier))
@@ -1466,7 +1467,7 @@ class TobaccoViewModel(
         }
         triggerAutoSync(forceOverwriteRemote = true)
     }
-    fun deleteTransactions(ids: List<Int>) = viewModelScope.launch {
+    fun deleteTransactions(ids: List<Long>) = viewModelScope.launch {
         ids.forEach { id ->
             val tx = repository.getTransactionById(id)
             if (tx != null) {
@@ -1512,27 +1513,63 @@ class TobaccoViewModel(
 
     fun parsePrice(input: String): Double = input.replace(",", ".").toDoubleOrNull() ?: 0.0
 
-    fun addScannedTransactions(items: List<LocalScanner.ScannedItem>, supplier: String, date: Long? = null) = viewModelScope.launch(Dispatchers.IO) {
+    fun scanReceiptBitmap(bitmap: android.graphics.Bitmap, onSuccess: (List<ScannedItem>) -> Unit, onError: (String) -> Unit) {
+        com.aistudio.ecotobacco.kfzqw.scanner.ReceiptScannerManager.scanReceipt(
+            bitmap = bitmap,
+            onSuccess = { items ->
+                onSuccess(items)
+            },
+            onError = { e ->
+                onError(e.localizedMessage ?: "Gagal memindai nota")
+            }
+        )
+    }
+
+    fun addScannedTransactions(items: List<ScannedItem>, supplier: String, date: Long? = null) = viewModelScope.launch(Dispatchers.IO) {
         val now = date ?: System.currentTimeMillis()
         
         // Sync each scanned item to product database
         items.forEach { item ->
-            syncProductFromTransaction(item.name, item.price, "kg")
+            val uPrice = if (item.unitPrice > 0) item.unitPrice else (item.totalPrice / item.quantity)
+            syncProductFromTransaction(item.name, uPrice, item.unit)
         }
 
-        val transactions = items.map {
+        val transactions = items.map { item ->
+            val uPrice = if (item.unitPrice > 0) item.unitPrice else (item.totalPrice / item.quantity)
+            val total = if (item.totalPrice > 0) item.totalPrice else (item.quantity * uPrice)
             TransactionEntity(
                 date = now,
-                productName = it.name,
-                quantity = it.quantity,
-                unitPrice = it.price,
-                total = it.quantity * it.price,
+                productName = item.name,
+                quantity = item.quantity,
+                unitPrice = uPrice,
+                total = total,
                 supplier = supplier,
-                unit = "kg"
+                unit = item.unit
             )
         }
         repository.insertTransactions(transactions)
         triggerAutoSync(forceOverwriteRemote = true)
+    }
+
+    @JvmName("addLegacyScannedTransactions")
+    fun addScannedTransactions(
+        items: List<com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner.ScannedItem>,
+        supplier: String,
+        date: Long? = null
+    ) {
+        val converted = items.map { item ->
+            ScannedItem(
+                name = item.name,
+                quantity = item.quantity,
+                unit = item.unit.ifBlank { "pcs" },
+                unitPrice = item.price,
+                totalPrice = item.price * item.quantity,
+                needsReview = item.needsReview,
+                reviewReason = item.reviewReason,
+                confidence = item.confidence / 100f
+            )
+        }
+        addScannedTransactions(converted, supplier, date)
     }
 
     fun importProductsFromCsv(context: Context, uri: Uri) = viewModelScope.launch(Dispatchers.IO) {
@@ -1644,7 +1681,7 @@ class TobaccoViewModel(
     }
 
     private suspend fun generateBackupJson(): String {
-        val localTransactionsData = repository.getAllTransactionsDirect().filter { it.isDeleted == 0 }
+        val localTransactionsData = repository.getAllTransactionsDirect().filter { !it.isDeleted }
         val localProductsData = repository.getAllProductsDirect()
         val localProcurementData = repository.getAllProcurementPlansDirect()
         val localCategoriesData = repository.getAllCategoriesDirect().map { it.name }
@@ -1949,7 +1986,7 @@ class TobaccoViewModel(
             val isDeleted = obj.optBoolean("isDeleted", false) || obj.optBoolean("is_deleted", false) || obj.optBoolean("deleted", false)
 
             return TransactionSyncModel(
-                id = obj.optInt("id", index + 1),
+                id = obj.optLong("id", (index + 1).toLong()),
                 date = date,
                 productName = pName.trim(),
                 quantity = qty,
@@ -1984,7 +2021,7 @@ class TobaccoViewModel(
             val subCategory = obj.optString("subCategory").ifEmpty { obj.optString("sub_category").ifEmpty { obj.optString("subkategori").ifEmpty { "Umum" } } }
 
             return ProductSyncModel(
-                id = obj.optInt("id", index + 1),
+                id = obj.optLong("id", (index + 1).toLong()),
                 name = name.trim(),
                 price = price,
                 unit = unit.trim(),
@@ -2020,7 +2057,7 @@ class TobaccoViewModel(
                     if (itemName.isNotBlank()) {
                         itemsList.add(
                             ProcurementItemSyncModel(
-                                id = itemObj.optInt("id", j + 1),
+                                id = itemObj.optLong("id", (j + 1).toLong()),
                                 productName = itemName.trim(),
                                 targetQuantity = parseFlexibleDouble(itemObj.opt("targetQuantity") ?: itemObj.opt("quantity") ?: itemObj.opt("jumlah"), 1.0),
                                 estimatedUnitPrice = parseFlexibleDouble(itemObj.opt("estimatedUnitPrice") ?: itemObj.opt("unitPrice") ?: itemObj.opt("price") ?: itemObj.opt("harga"), 0.0),
@@ -2032,7 +2069,7 @@ class TobaccoViewModel(
                 }
             }
             return ProcurementPlanSyncModel(
-                id = planObj.optInt("id", index + 1),
+                id = planObj.optLong("id", (index + 1).toLong()),
                 date = date,
                 supplierName = sName.trim(),
                 items = itemsList
@@ -2200,7 +2237,7 @@ class TobaccoViewModel(
 
                             txFromCsv.add(
                                 TransactionSyncModel(
-                                    id = i,
+                                    id = i.toLong(),
                                     date = date,
                                     productName = pName,
                                     quantity = qty,
@@ -2246,7 +2283,7 @@ class TobaccoViewModel(
 
         // 2. Process deleted transactions: combine tombstones and purge any deleted transactions from local DB
         val incomingDeletedTx = (remoteBundle.deletedTransactions ?: emptyList()).toSet()
-        val combinedDeletedTx = (getDeletedTransactionKeys() + incomingDeletedTx).toSet()
+        val combinedDeletedTx = getDeletedTransactionKeys().plus(incomingDeletedTx).toSet()
         addDeletedTransactionKeys(combinedDeletedTx)
 
         localTransactionsData.forEach { tx ->
@@ -2271,7 +2308,7 @@ class TobaccoViewModel(
 
         // 5. Merge active products & active transactions
         val currentLocalProducts = repository.getAllProductsDirect()
-        val currentLocalTx = repository.getAllTransactionsDirect().filter { it.isDeleted == 0 }
+        val currentLocalTx = repository.getAllTransactionsDirect().filter { !it.isDeleted }
 
         val mergedTransactions = mergeTransactions(currentLocalTx, activeIncomingTx)
         val mergedProducts = mergeProducts(currentLocalProducts, activeIncomingProducts)

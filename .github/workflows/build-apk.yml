@@ -1,0 +1,99 @@
+name: Build & Sign Android APK
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ "v*" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android Build-Tools 34.0.0
+        run: sdkmanager "build-tools;34.0.0" "platforms;android-34"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.1"
+
+      - name: Ensure debug.keystore exists for Gradle config
+        run: |
+          if [ ! -f debug.keystore ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Restore google-services.json from Secret (if configured)
+        if: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          echo "$GOOGLE_SERVICES_JSON" > app/google-services.json
+
+      - name: Build Release APK
+        run: gradle :app:assembleRelease --no-daemon
+
+      - name: Sign Release APK with Upload Keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          BT="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          RAW_APK="app/build/outputs/apk/release/app-release.apk"
+
+          if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > upload-keystore.jks
+            PASS_KEY="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
+            "$BT/zipalign" -f -p 4 "$RAW_APK" aligned-release.apk
+            "$BT/apksigner" sign \
+              --ks upload-keystore.jks \
+              --ks-key-alias "$KEY_ALIAS" \
+              --ks-pass "pass:$KEYSTORE_PASSWORD" \
+              --key-pass "pass:$PASS_KEY" \
+              --out eco-tobacco-signed.apk \
+              aligned-release.apk
+            rm -f upload-keystore.jks aligned-release.apk eco-tobacco-signed.apk.idsig
+            "$BT/apksigner" verify --print-certs eco-tobacco-signed.apk
+          else
+            echo "::warning::Secret keystore belum diisi, memakai fallback build APK Gradle."
+            cp "$RAW_APK" eco-tobacco-signed.apk
+          fi
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: eco-tobacco-signed-apk
+          path: eco-tobacco-signed.apk
+          retention-days: 30
+
+      - name: Create GitHub Release with APK (on tag v*)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: eco-tobacco-signed.apk
+          generate_release_notes: true

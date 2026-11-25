@@ -904,7 +904,7 @@
         <div id="githubReleaseResult" class="bg-slate-900/80 border border-slate-700 rounded-xl p-3.5 space-y-2.5">
           <div class="flex items-center justify-between">
             <span class="text-xs text-slate-400">Versi Terpasang Saat Ini:</span>
-            <span class="text-xs font-bold font-mono text-emerald-400">v4.4 (Build 16)</span>
+            <span class="text-xs font-bold font-mono text-emerald-400">v4.5 (Build 17)</span>
           </div>
           <div id="githubReleaseStatus" class="text-xs text-slate-300">
             Klik tombol "Cek Rilis" di atas untuk memeriksa pembaruan rilis terbaru dari GitHub Releases.
@@ -2108,7 +2108,7 @@
         }
 
         const data = await response.json();
-        const tagName = data.tag_name || "v4.4";
+        const tagName = data.tag_name || "v4.5";
         const title = data.name || "Pembaruan Baru";
         const body = data.body || "Peningkatan stabilitas dan fitur.";
         const publishedDate = data.published_at ? formatDateOnly(new Date(data.published_at).getTime()) : "-";

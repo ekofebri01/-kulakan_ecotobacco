@@ -34,7 +34,6 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -274,7 +273,7 @@ fun AddProductDialog(
                             label = { Text("Satuan Beli") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
+                                .menuAnchor(),
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded)
                             },
@@ -339,7 +338,7 @@ fun AddProductDialog(
                             label = { Text("Satuan Jual") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
+                                .menuAnchor(),
                             trailingIcon = {
                                 ExposedDropdownMenuDefaults.TrailingIcon(expanded = sellingUnitExpanded)
                             },
@@ -676,7 +675,7 @@ fun EditProductDialog(
                             label = { Text("Satuan Beli") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
+                                .menuAnchor(),
                             shape = RoundedCornerShape(12.dp),
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded) },
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
@@ -717,7 +716,7 @@ fun EditProductDialog(
                             label = { Text("Satuan Jual") },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true),
+                                .menuAnchor(),
                             shape = RoundedCornerShape(12.dp),
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = sellingUnitExpanded) },
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)

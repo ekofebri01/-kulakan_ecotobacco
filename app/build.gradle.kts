@@ -12,8 +12,8 @@ android {
         applicationId = "com.aistudio.ecotobacco.kfzqw"
         minSdk = 24
         targetSdk = 34
-        versionCode = 16
-        versionName = "4.4"
+        versionCode = 18
+        versionName = "4.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -38,7 +38,11 @@ android {
         }
         release {
             signingConfig = signingConfigs.getByName("debugConfig")
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            ndk {
+                abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

@@ -3,6 +3,23 @@ package com.aistudio.ecotobacco.kfzqw.data.remote
 import com.squareup.moshi.JsonClass
 
 @JsonClass(generateAdapter = true)
+data class DriveBackupFile(
+    val id: String = "",
+    val name: String = "",
+    val sizeBytes: Long = 0L,
+    val timestamp: Long = 0L,
+    val modifiedTime: String = "",
+    val source: String = "Cloud",
+    val itemCountText: String = "0 items",
+    val jsonData: String? = "",
+    val summary: String = ""
+)
+
+enum class SyncStatus {
+    IDLE, SYNCING, SUCCESS, ERROR, DISCONNECTED, OFFLINE, SYNCED
+}
+
+@JsonClass(generateAdapter = true)
 data class SyncDataBundle(
     val transactions: List<TransactionSyncModel>,
     val products: List<ProductSyncModel>,
@@ -14,6 +31,7 @@ data class SyncDataBundle(
     val categories: List<String>? = null
 )
 
+@JsonClass(generateAdapter = true)
 data class AutoBackupInfo(
     val lastBackupTime: Long = 0L,
     val fileSizeFormatted: String = "0 B",
@@ -39,44 +57,59 @@ data class AppSettingsSyncModel(
 
 @JsonClass(generateAdapter = true)
 data class TransactionSyncModel(
-    val id: Int,
-    val date: Long,
-    val productName: String,
-    val quantity: Double,
-    val unitPrice: Double,
-    val total: Double,
+    val id: Long = 0L,
+    val date: Long = System.currentTimeMillis(),
+    val productName: String = "",
+    val quantity: Double = 0.0,
+    val unitPrice: Double = 0.0,
+    val total: Double = 0.0,
     val supplier: String? = "",
     val unit: String? = "kg",
-    val isDeleted: Boolean? = false
+    val isDeleted: Boolean? = false,
+    val invoiceNumber: String = "",
+    val totalAmount: Double = 0.0,
+    val paymentMethod: String = "Tunai",
+    val cashierName: String = "Kasir",
+    val itemsJson: String = ""
 )
 
 @JsonClass(generateAdapter = true)
 data class ProductSyncModel(
-    val id: Int,
-    val name: String,
-    val price: Double,
+    val id: Long = 0L,
+    val name: String = "",
+    val price: Double = 0.0,
     val unit: String? = "kg",
     val sellingPrice: Double? = 0.0,
     val sellingUnit: String? = "pcs",
     val contentQuantity: Double? = 1.0,
     val category: String? = "",
-    val subCategory: String? = "Umum"
+    val subCategory: String? = "Umum",
+    val stock: Int = 0,
+    val barcode: String = "",
+    val updatedAt: Long = System.currentTimeMillis()
 )
 
 @JsonClass(generateAdapter = true)
 data class ProcurementPlanSyncModel(
-    val id: Int,
-    val date: Long,
-    val supplierName: String,
-    val items: List<ProcurementItemSyncModel>
+    val id: Long = 0L,
+    val date: Long = System.currentTimeMillis(),
+    val supplierName: String = "",
+    val title: String = "",
+    val status: String = "Pending",
+    val notes: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val items: List<ProcurementItemSyncModel> = emptyList()
 )
 
 @JsonClass(generateAdapter = true)
 data class ProcurementItemSyncModel(
-    val id: Int,
-    val productName: String,
-    val targetQuantity: Double,
-    val estimatedUnitPrice: Double,
+    val id: Long = 0L,
+    val planId: Long = 0L,
+    val productName: String = "",
+    val targetQuantity: Double = 0.0,
+    val estimatedUnitPrice: Double = 0.0,
+    val quantity: Int = 0,
+    val estimatedPrice: Double = 0.0,
     val unit: String = "kg",
     val isBought: Boolean = false
 )
