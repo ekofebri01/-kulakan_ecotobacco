@@ -1,5 +1,6 @@
 package com.aistudio.ecotobacco.kfzqw.ui.screens.transactions
 
+import android.app.DatePickerDialog
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -61,13 +63,17 @@ import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -77,6 +83,10 @@ import androidx.compose.ui.window.DialogProperties
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 private data class ScannedItemState(
     val id: Int,
@@ -91,10 +101,13 @@ fun ScanResultDialog(
     productMasterList: List<ProductEntity> = emptyList(),
     showDebugOption: Boolean = false,
     onShowDebug: () -> Unit = {},
-    onConfirm: (List<LocalScanner.ScannedItem>, String) -> Unit,
+    onConfirm: (List<LocalScanner.ScannedItem>, String, Long) -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     var editableShopName by remember { mutableStateOf(scannedResult.shopName ?: "") }
+    var selectedDate by remember { mutableLongStateOf(scannedResult.date ?: System.currentTimeMillis()) }
+    val isDateDetected = scannedResult.date != null
 
     var itemStates by remember {
         mutableStateOf(scannedResult.items.mapIndexed { index, item ->
@@ -192,48 +205,128 @@ fun ScanResultDialog(
 
                 Spacer(Modifier.height(16.dp))
 
-                // Editable Shop Info Card
+                // Editable Shop Info & Receipt Date Card
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
                     shape = RoundedCornerShape(16.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                     modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.Store,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(24.dp).padding(start = 4.dp)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            OutlinedTextField(
-                                value = editableShopName,
-                                onValueChange = { editableShopName = it },
-                                label = { Text("Nama Supplier / Toko") },
-                                modifier = Modifier.fillMaxWidth(),
-                                textStyle = MaterialTheme.typography.titleSmall.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                ),
-                                singleLine = true
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Store,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(24.dp).padding(start = 4.dp)
                             )
-                            if (!scannedResult.shopAddress.isNullOrBlank()) {
-                                Text(
-                                    text = scannedResult.shopAddress,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    modifier = Modifier.padding(horizontal = 16.dp)
+                            Spacer(Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                OutlinedTextField(
+                                    value = editableShopName,
+                                    onValueChange = { editableShopName = it },
+                                    label = { Text("Nama Supplier / Toko") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = MaterialTheme.typography.titleSmall.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    ),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                        unfocusedBorderColor = Color.Transparent,
+                                        focusedContainerColor = Color.Transparent,
+                                        unfocusedContainerColor = Color.Transparent,
+                                    ),
+                                    singleLine = true
+                                )
+                                if (!scannedResult.shopAddress.isNullOrBlank()) {
+                                    Text(
+                                        text = scannedResult.shopAddress,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 16.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        // Receipt Date Row (Detected / Editable)
+                        val formattedDate = remember(selectedDate) {
+                            SimpleDateFormat("EEEE, dd MMM yyyy", Locale.forLanguageTag("id-ID")).format(Date(selectedDate))
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .clickable {
+                                    val cal = Calendar.getInstance().apply { timeInMillis = selectedDate }
+                                    DatePickerDialog(
+                                        context,
+                                        { _, year, month, day ->
+                                            cal.set(year, month, day, 12, 0, 0)
+                                            selectedDate = cal.timeInMillis
+                                        },
+                                        cal.get(Calendar.YEAR),
+                                        cal.get(Calendar.MONTH),
+                                        cal.get(Calendar.DAY_OF_MONTH)
+                                    ).show()
+                                }
+                                .padding(horizontal = 6.dp, vertical = 6.dp)
+                                .testTag("scan_result_date_row"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    Icons.Default.CalendarToday,
+                                    contentDescription = "Tanggal Nota",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "Tanggal Nota",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = formattedDate,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isDateDetected) emeraldGreen.copy(alpha = 0.14f) else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f)
+                                ) {
+                                    Text(
+                                        text = if (isDateDetected) "Terdeteksi" else "Hari Ini",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isDateDetected) emeraldGreen else MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = "Ubah Tanggal",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -559,7 +652,7 @@ fun ScanResultDialog(
                             Button(
                                 onClick = {
                                     val selected = itemStates.filter { it.isSelected }.map { it.item }
-                                    onConfirm(selected, editableShopName)
+                                    onConfirm(selected, editableShopName, selectedDate)
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = emeraldGreen),
                                 shape = RoundedCornerShape(14.dp),

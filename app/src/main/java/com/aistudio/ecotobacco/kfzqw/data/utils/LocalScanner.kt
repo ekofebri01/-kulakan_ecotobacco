@@ -56,9 +56,10 @@ object LocalScanner {
     }
 
     private val REGEX_DATE = listOf(
-        """(\d{4})[-/.](\d{2})[-/.](\d{2})""".toRegex(),
-        """(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})""".toRegex(),
-        """(\d{1,2})\s+(Jan|Feb|Mar|Apr|Mei|Jun|Jul|Agu|Sep|Okt|Nov|Des)[a-z]*\s+(\d{2,4})""".toRegex(RegexOption.IGNORE_CASE)
+        """\b(20\d{2})\s*[-/._–—]\s*(\d{1,2})\s*[-/._–—]\s*(\d{1,2})\b""".toRegex(),
+        """\b(\d{1,2})\s*[-/._–—]\s*(\d{1,2})\s*[-/._–—]\s*(\d{2,4})\b""".toRegex(),
+        """\b(\d{1,2})\s+(Jan|Feb|Mar|Apr|Mei|May|Jun|Jul|Agu|Aug|Sep|Okt|Oct|Nov|Des|Dec)[a-z]*\.?\s*,?\s*(\d{2,4})\b""".toRegex(RegexOption.IGNORE_CASE),
+        """(20[2-3]\d)(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])""".toRegex()
     )
 
     suspend fun scanReceipt(context: Context, imageUri: Uri): ScannedResult = withContext(Dispatchers.IO) {
@@ -186,6 +187,10 @@ object LocalScanner {
         val report = buildString {
             appendLine("--- RECEIPT PARSING REPORT ---")
             appendLine("Toko: ${shopName ?: "-"}")
+            val dateStr = detectedDate?.let {
+                java.text.SimpleDateFormat("dd MMM yyyy", java.util.Locale.forLanguageTag("id-ID")).format(java.util.Date(it))
+            } ?: "Tidak terdeteksi"
+            appendLine("Tanggal: $dateStr")
             appendLine("Item Terdeteksi: ${mappedItems.size}")
             appendLine("Rata-rata Akurasi: $avgConf%")
             if (detailed.total != null) appendLine("Total Nota: Rp ${detailed.total}")
@@ -233,40 +238,56 @@ object LocalScanner {
         }
     }
 
-    private fun findDateMatch(text: String): Long? {
+    fun findDateMatch(text: String): Long? {
         val monthMap = mapOf(
-            "jan" to 0, "feb" to 1, "mar" to 2, "apr" to 3, "mei" to 4, "jun" to 5,
-            "jul" to 6, "agu" to 7, "sep" to 8, "okt" to 9, "nov" to 10, "des" to 11
+            "jan" to 1, "feb" to 2, "mar" to 3, "apr" to 4,
+            "mei" to 5, "may" to 5,
+            "jun" to 6, "jul" to 7,
+            "agu" to 8, "aug" to 8,
+            "sep" to 9,
+            "okt" to 10, "oct" to 10,
+            "nov" to 11,
+            "des" to 12, "dec" to 12
         )
         for ((idx, regex) in REGEX_DATE.withIndex()) {
-            val match = regex.find(text) ?: continue
-            try {
-                val cal = Calendar.getInstance()
-                when (idx) {
-                    0 -> {
-                        val year = match.groupValues[1].toInt()
-                        val month = match.groupValues[2].toInt() - 1
-                        val day = match.groupValues[3].toInt()
-                        cal.set(year, month, day, 12, 0, 0)
+            for (match in regex.findAll(text)) {
+                try {
+                    val year: Int
+                    val month: Int
+                    val day: Int
+                    when (idx) {
+                        0, 3 -> {
+                            year = match.groupValues[1].toInt()
+                            month = match.groupValues[2].toInt()
+                            day = match.groupValues[3].toInt()
+                        }
+                        1 -> {
+                            day = match.groupValues[1].toInt()
+                            month = match.groupValues[2].toInt()
+                            var y = match.groupValues[3].toInt()
+                            if (y < 100) y += 2000
+                            year = y
+                        }
+                        2 -> {
+                            day = match.groupValues[1].toInt()
+                            val monStr = match.groupValues[2].lowercase().take(3)
+                            month = monthMap[monStr] ?: continue
+                            var y = match.groupValues[3].toInt()
+                            if (y < 100) y += 2000
+                            year = y
+                        }
+                        else -> continue
                     }
-                    1 -> {
-                        val day = match.groupValues[1].toInt()
-                        val month = match.groupValues[2].toInt() - 1
-                        var year = match.groupValues[3].toInt()
-                        if (year < 100) year += 2000
-                        cal.set(year, month, day, 12, 0, 0)
-                    }
-                    2 -> {
-                        val day = match.groupValues[1].toInt()
-                        val monStr = match.groupValues[2].lowercase().take(3)
-                        val month = monthMap[monStr] ?: continue
-                        var year = match.groupValues[3].toInt()
-                        if (year < 100) year += 2000
-                        cal.set(year, month, day, 12, 0, 0)
-                    }
+
+                    if (year !in 2000..2100 || month !in 1..12 || day !in 1..31) continue
+
+                    val cal = Calendar.getInstance()
+                    cal.isLenient = false
+                    cal.set(year, month - 1, day, 12, 0, 0)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    return cal.timeInMillis
+                } catch (_: Exception) {
                 }
-                return cal.timeInMillis
-            } catch (_: Exception) {
             }
         }
         return null

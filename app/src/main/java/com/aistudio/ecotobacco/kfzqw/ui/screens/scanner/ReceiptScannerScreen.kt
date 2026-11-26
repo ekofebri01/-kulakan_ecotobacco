@@ -8,15 +8,12 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -25,11 +22,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -40,8 +35,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -64,19 +57,15 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -91,7 +80,6 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions.RESULT_
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,34 +88,39 @@ fun ReceiptScannerScreen(
     onScanComplete: (LocalScanner.ScannedResult) -> Unit
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
 
     var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
     var isScanning by remember { mutableStateOf(false) }
+    var cameraUnavailable by remember { mutableStateOf(false) }
+    var hasLaunchedInitialCamera by remember { mutableStateOf(false) }
 
     // Timer & Status States
     var scanTimeMillis by remember { mutableLongStateOf(0L) }
     var scanStatusMessage by remember { mutableStateOf("Menganalisis Gambar...") }
 
-    // Launcher for Document Scanner
+    // Launcher for Document Scanner (camera + built-in gallery import)
     val scannerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartIntentSenderForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             val resultData = GmsDocumentScanningResult.fromActivityResultIntent(result.data)
-            resultData?.pages?.let { pages ->
-                if (pages.isNotEmpty()) {
-                    selectedImageUri = pages[0].imageUri
-                }
+            val capturedUri = resultData?.pages?.firstOrNull()?.imageUri
+            if (capturedUri != null) {
+                selectedImageUri = capturedUri
+            } else if (selectedImageUri == null) {
+                onNavigateBack()
             }
+        } else if (selectedImageUri == null) {
+            onNavigateBack()
         }
     }
 
-    // Launcher for Gallery Photo Picker (Zero-permission, Play-compliant)
+    // Fallback Launcher for Gallery Photo Picker (Zero-permission, Play-compliant)
     val galleryLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
+            cameraUnavailable = false
             selectedImageUri = uri
         }
     }
@@ -141,6 +134,44 @@ fun ReceiptScannerScreen(
             .build()
     }
     val scanner = remember { GmsDocumentScanning.getClient(scannerOptions) }
+
+    fun launchCameraScanner() {
+        val activity = context as? Activity ?: return
+        cameraUnavailable = false
+        scanner.getStartScanIntent(activity)
+            .addOnSuccessListener { intentSender ->
+                scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
+            }
+            .addOnFailureListener {
+                cameraUnavailable = true
+                Toast.makeText(
+                    context,
+                    "Kamera scanner tidak tersedia, silakan pilih dari Galeri",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+    }
+
+    // Immediately open the camera when entering the scanner screen (no intermediate choice page)
+    LaunchedEffect(Unit) {
+        if (!hasLaunchedInitialCamera && selectedImageUri == null) {
+            hasLaunchedInitialCamera = true
+            launchCameraScanner()
+        }
+    }
+
+    // Automatically run OCR extraction right after camera/gallery image is captured
+    LaunchedEffect(selectedImageUri) {
+        val uri = selectedImageUri ?: return@LaunchedEffect
+        isScanning = true
+        scanStatusMessage = "Membaca Teks Nota..."
+        delay(200)
+        val result = LocalScanner.scanReceipt(context, uri)
+        scanStatusMessage = "Menyesuaikan Data Produk..."
+        delay(250)
+        isScanning = false
+        onScanComplete(result)
+    }
 
     // Timer Effect during Scanning
     LaunchedEffect(isScanning) {
@@ -281,7 +312,6 @@ fun ReceiptScannerScreen(
 
                         Canvas(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                             val lineY = size.height * laserPos
-                            // Laser glowing line
                             drawLine(
                                 brush = Brush.horizontalGradient(
                                     colors = listOf(
@@ -296,7 +326,6 @@ fun ReceiptScannerScreen(
                                 end = Offset(size.width, lineY),
                                 strokeWidth = 4.dp.toPx()
                             )
-                            // Laser beam overlay shadow
                             drawRect(
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
@@ -310,145 +339,79 @@ fun ReceiptScannerScreen(
                         }
                     }
 
-                    // Scanner Viewfinder Corner Markers (Sleek Camera Reticle)
+                    // Scanner Viewfinder Corner Markers
                     Canvas(modifier = Modifier.fillMaxSize().padding(24.dp)) {
                         val stroke = 3.dp.toPx()
                         val cornerLen = 28.dp.toPx()
                         val color = if (isScanning) primaryGreen else primaryCyan.copy(alpha = 0.7f)
 
-                        // Top Left
                         drawLine(color, Offset(0f, 0f), Offset(cornerLen, 0f), strokeWidth = stroke)
                         drawLine(color, Offset(0f, 0f), Offset(0f, cornerLen), strokeWidth = stroke)
 
-                        // Top Right
                         drawLine(color, Offset(size.width, 0f), Offset(size.width - cornerLen, 0f), strokeWidth = stroke)
                         drawLine(color, Offset(size.width, 0f), Offset(size.width, cornerLen), strokeWidth = stroke)
 
-                        // Bottom Left
                         drawLine(color, Offset(0f, size.height), Offset(cornerLen, size.height), strokeWidth = stroke)
                         drawLine(color, Offset(0f, size.height), Offset(0f, size.height - cornerLen), strokeWidth = stroke)
 
-                        // Bottom Right
                         drawLine(color, Offset(size.width, size.height), Offset(size.width - cornerLen, size.height), strokeWidth = stroke)
                         drawLine(color, Offset(size.width, size.height), Offset(size.width, size.height - cornerLen), strokeWidth = stroke)
                     }
-
-                } else {
-                    // Empty State: Dedicated Visual Cropping & Alignment Guide Overlay
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(24.dp),
-                        contentAlignment = Alignment.Center
+                } else if (cameraUnavailable) {
+                    // Error fallback when GMS Document Scanner isn't available on the device
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(32.dp)
                     ) {
-                        // Cropping Guide Frame (Receipt / Invoice Aspect Ratio Box)
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth(0.88f)
-                                .fillMaxHeight(0.82f)
-                                .border(
-                                    width = 2.dp,
-                                    brush = Brush.verticalGradient(
-                                        colors = listOf(primaryCyan, primaryGreen, primaryCyan)
-                                    ),
-                                    shape = RoundedCornerShape(20.dp)
+                        Surface(
+                            shape = CircleShape,
+                            color = primaryCyan.copy(alpha = 0.15f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, primaryCyan.copy(alpha = 0.4f)),
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoCamera,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(36.dp),
+                                    tint = primaryCyan
                                 )
-                                .background(Color.Black.copy(alpha = 0.25f), RoundedCornerShape(20.dp))
-                                .drawBehind {
-                                    // Rule of thirds & alignment grid lines inside cropping box
-                                    val guideColor = Color.White.copy(alpha = 0.15f)
-                                    val pathEffect = PathEffect.dashPathEffect(floatArrayOf(24f, 16f), 0f)
-
-                                    // Vertical center guide
-                                    drawLine(
-                                        color = guideColor,
-                                        start = Offset(size.width / 2f, 0f),
-                                        end = Offset(size.width / 2f, size.height),
-                                        strokeWidth = 1f,
-                                        pathEffect = pathEffect
-                                    )
-                                    // Horizontal center guide
-                                    drawLine(
-                                        color = guideColor,
-                                        start = Offset(0f, size.height / 2f),
-                                        end = Offset(size.width, size.height / 2f),
-                                        strokeWidth = 1f,
-                                        pathEffect = pathEffect
-                                    )
-                                },
-                            contentAlignment = Alignment.TopCenter
-                        ) {
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier.padding(20.dp)
-                            ) {
-                                Surface(
-                                    color = primaryGreen.copy(alpha = 0.2f),
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, primaryGreen.copy(alpha = 0.5f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.DocumentScanner,
-                                            contentDescription = null,
-                                            tint = primaryGreen,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(Modifier.width(6.dp))
-                                        Text(
-                                            text = "Area Crop Nota Tembakau",
-                                            color = primaryGreen,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
                             }
                         }
-
-                        // Centered Instructional Badge & Icon
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(32.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = primaryCyan.copy(alpha = 0.15f),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, primaryCyan.copy(alpha = 0.4f)),
-                                modifier = Modifier.size(72.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.PhotoCamera,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(36.dp),
-                                        tint = primaryCyan
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            Text(
-                                text = "Posisikan Nota di Dalam Kotak",
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Text(
-                                text = "Sejajarkan tepi nota kulakan agar pas dengan garis pemandu untuk hasil OCR presisi 100%.",
-                                color = Color.White.copy(alpha = 0.7f),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontSize = 11.sp,
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Kamera Scanner Tidak Tersedia",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Perangkat ini belum mendukung kamera scanner otomatis. Anda tetap bisa memilih foto nota dari galeri.",
+                            color = Color.White.copy(alpha = 0.7f),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 12.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    }
+                } else {
+                    // Brief launching state while system camera opens
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(24.dp)
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(56.dp),
+                            color = primaryGreen,
+                            strokeWidth = 4.dp
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Membuka Kamera...",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
                     }
                 }
 
@@ -522,49 +485,35 @@ fun ReceiptScannerScreen(
                 }
             }
 
-            // Bottom Action Control Bar
-            Surface(
-                color = Color(0xFF1E293B),
-                shape = RoundedCornerShape(24.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            // Fallback Action Bar shown ONLY when camera scanner is unavailable
+            AnimatedVisibility(visible = cameraUnavailable && selectedImageUri == null) {
+                Surface(
+                    color = Color(0xFF1E293B),
+                    shape = RoundedCornerShape(24.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Button(
-                            onClick = {
-                                val activity = context as? Activity
-                                if (activity != null) {
-                                    scanner.getStartScanIntent(activity)
-                                        .addOnSuccessListener { intentSender ->
-                                            scannerLauncher.launch(IntentSenderRequest.Builder(intentSender).build())
-                                        }
-                                        .addOnFailureListener {
-                                            Toast.makeText(
-                                                context,
-                                                "Kamera scanner tidak tersedia, silakan pilih dari Galeri",
-                                                Toast.LENGTH_SHORT
-                                            ).show()
-                                        }
-                                }
-                            },
+                            onClick = { launchCameraScanner() },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(54.dp)
-                                .testTag("scan_camera_button"),
+                                .testTag("scan_camera_retry_button"),
                             shape = RoundedCornerShape(16.dp),
-                            enabled = !isScanning,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.White.copy(alpha = 0.12f),
                                 contentColor = Color.White
                             )
                         ) {
-                            Icon(Icons.Default.PhotoCamera, contentDescription = "Ambil dari Kamera", modifier = Modifier.size(20.dp))
+                            Icon(Icons.Default.PhotoCamera, contentDescription = "Coba Buka Kamera", modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Kamera", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            Text("Coba Lagi", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                         }
 
                         Button(
@@ -576,9 +525,8 @@ fun ReceiptScannerScreen(
                             modifier = Modifier
                                 .weight(1f)
                                 .height(54.dp)
-                                .testTag("scan_gallery_button"),
+                                .testTag("scan_gallery_fallback_button"),
                             shape = RoundedCornerShape(16.dp),
-                            enabled = !isScanning,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = primaryCyan.copy(alpha = 0.18f),
                                 contentColor = primaryCyan
@@ -588,49 +536,6 @@ fun ReceiptScannerScreen(
                             Icon(Icons.Default.Image, contentDescription = "Pilih dari Galeri", modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Galeri", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        }
-                    }
-
-                    // Main Action CTA when image is loaded
-                    AnimatedVisibility(visible = selectedImageUri != null) {
-                        Button(
-                            onClick = {
-                                selectedImageUri?.let { uri ->
-                                    isScanning = true
-                                    coroutineScope.launch {
-                                        scanStatusMessage = "Membaca Teks Nota..."
-                                        delay(250)
-                                        val result = LocalScanner.scanReceipt(context, uri)
-
-                                        scanStatusMessage = "Menyesuaikan Data Produk..."
-                                        delay(300)
-
-                                        isScanning = false
-                                        onScanComplete(result)
-                                    }
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp)
-                                .testTag("extract_receipt_button"),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = primaryGreen),
-                            enabled = !isScanning
-                        ) {
-                            Icon(
-                                Icons.Default.AutoAwesome,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                "Ekstrak Data Nota (Spatial AI)",
-                                fontWeight = FontWeight.ExtraBold,
-                                color = Color.White,
-                                fontSize = 15.sp
-                            )
                         }
                     }
                 }

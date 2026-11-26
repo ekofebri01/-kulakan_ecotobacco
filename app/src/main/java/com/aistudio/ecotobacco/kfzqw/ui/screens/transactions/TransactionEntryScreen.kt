@@ -3,6 +3,7 @@ package com.aistudio.ecotobacco.kfzqw.ui.screens.transactions
 import android.app.DatePickerDialog
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
@@ -56,6 +58,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -83,6 +86,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,6 +96,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -105,6 +110,7 @@ import com.aistudio.ecotobacco.kfzqw.ui.components.UnitManagementDialog
 import com.aistudio.ecotobacco.kfzqw.ui.theme.LocalUiConfig
 import com.aistudio.ecotobacco.kfzqw.ui.theme.scaled
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModel
+import kotlinx.coroutines.launch
 import java.text.NumberFormat
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -197,10 +203,29 @@ fun TransactionEntryScreen(
         }
     }
 
+    val coroutineScope = rememberCoroutineScope()
+    var isGalleryScanning by remember { mutableStateOf(false) }
+
     val csvPickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.GetContent()
     ) { uri ->
         uri?.let { viewModel.importTransactionsFromCsv(context, it) }
+    }
+
+    val galleryScanLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            isGalleryScanning = true
+            coroutineScope.launch {
+                val result = LocalScanner.scanReceipt(context, uri)
+                isGalleryScanning = false
+                scannedItemsPreview = result
+                latestScannerReport = result.parsingReport
+                result.date?.let { selectedDate = it }
+                result.shopName?.let { supplier = it }
+            }
+        }
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -466,14 +491,44 @@ fun TransactionEntryScreen(
                             }
                         }
 
-                        Button(
-                            onClick = onNavigateToScanner,
-                            colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                            shape = RoundedCornerShape(12.dp),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                            modifier = Modifier.height(36.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text("Pindai", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            FilledTonalIconButton(
+                                onClick = {
+                                    galleryScanLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .testTag("scan_gallery_button"),
+                                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                                    containerColor = primaryColor.copy(alpha = 0.14f),
+                                    contentColor = primaryColor
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Image,
+                                    contentDescription = "Scan Nota dari Galeri",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Button(
+                                onClick = onNavigateToScanner,
+                                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                                modifier = Modifier
+                                    .height(40.dp)
+                                    .testTag("scan_camera_button")
+                            ) {
+                                Text("Pindai", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -1192,39 +1247,7 @@ fun TransactionEntryScreen(
                 }
             }
 
-            // --- 5.1 MULTI-ITEM CART LIST & ADD BUTTON ---
-            Button(
-                onClick = {
-                    if (selectedProduct.isNotBlank() && parsedQty > 0 && parsedPrice >= 0) {
-                        val newItem = ManualCartItem(
-                            productName = selectedProduct.trim(),
-                            quantity = parsedQty,
-                            unitPrice = parsedPrice,
-                            unit = activeUnit
-                        )
-                        manualItemsList = manualItemsList + newItem
-                        selectedProduct = ""
-                        quantity = ""
-                        unitPrice = ""
-                        Toast.makeText(context, "Item ditambahkan ke daftar kulakan", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Lengkapi nama produk, jumlah, dan harga terlebih dahulu", Toast.LENGTH_SHORT).show()
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = primaryColor.copy(alpha = 0.15f),
-                    contentColor = primaryColor
-                )
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Tambah Barang ke Daftar Kulakan", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            }
-
+            // --- 5.1 MULTI-ITEM CART LIST ---
             if (manualItemsList.isNotEmpty()) {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -1382,16 +1405,34 @@ fun TransactionEntryScreen(
     }
 
     // Modal & Dialogs
+    if (isGalleryScanning) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Membaca Nota Galeri...", fontWeight = FontWeight.Bold) },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(32.dp), color = primaryColor)
+                    Text("Mendeteksi daftar barang, tanggal, dan harga...", style = MaterialTheme.typography.bodyMedium)
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
     if (scannedItemsPreview != null) {
         ScanResultDialog(
             scannedResult = scannedItemsPreview!!,
             productMasterList = products,
             showDebugOption = isCameraDebugEnabled,
             onShowDebug = { showScannerDebug = true },
-            onConfirm = { itemsToSave, supplierName ->
+            onConfirm = { itemsToSave, supplierName, confirmedDate ->
                 if (itemsToSave.isNotEmpty()) {
                     supplier = supplierName
-                    viewModel.addScannedTransactions(itemsToSave, supplierName, selectedDate)
+                    selectedDate = confirmedDate
+                    viewModel.addScannedTransactions(itemsToSave, supplierName, confirmedDate)
                     scannedItemsPreview = null
                     onNavigateBack()
                 } else {
