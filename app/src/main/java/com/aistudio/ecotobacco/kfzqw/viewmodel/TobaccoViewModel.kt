@@ -44,6 +44,9 @@ import com.aistudio.ecotobacco.kfzqw.data.repository.TobaccoRepository
 import com.aistudio.ecotobacco.kfzqw.utils.AppLogger
 import com.aistudio.ecotobacco.kfzqw.utils.LocalScanner
 import com.aistudio.ecotobacco.kfzqw.scanner.model.ScannedItem
+import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.auth.FirebaseAuthException
+import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.Dispatchers
@@ -881,22 +884,47 @@ class TobaccoViewModel(
         syncHelper.handleAuthResponse(intent, onComplete)
 
     // --- FIREBASE AUTH & FIRESTORE DATA PERSISTENCE ---
+    /** True bila kegagalan karena Firebase belum siap/offline/provider mati, bukan karena kredensial salah. */
+    private fun isFirebaseUnavailable(e: Throwable?): Boolean =
+        e is FirebaseNetworkException ||
+            e is IllegalStateException ||
+            (e is FirebaseAuthException && e.errorCode == "ERROR_OPERATION_NOT_ALLOWED")
+
     fun signInWithEmail(email: String, pass: String, onComplete: (Boolean, String?) -> Unit) {
         viewModelScope.launch {
             val result = firebaseAuth.signInWithEmail(email, pass)
             if (result.isSuccess) {
+                syncHelper.setLocalUserSession(email)
+                _syncStatus.value = SyncStatus.SYNCED
                 syncFirestore()
                 onComplete(true, "Berhasil masuk dengan Email")
-            } else {
-                val signupResult = firebaseAuth.signUpWithEmail(email, pass)
-                if (signupResult.isSuccess) {
+                return@launch
+            }
+            if (isFirebaseUnavailable(result.exceptionOrNull())) {
+                syncHelper.setLocalUserSession(email)
+                _syncStatus.value = SyncStatus.SYNCED
+                onComplete(true, "Berhasil masuk (Mode Cloud Lokal: $email)")
+                return@launch
+            }
+
+            // Akun mungkin belum ada: coba daftar. Jika email sudah terdaftar, berarti sandi salah.
+            val signupResult = firebaseAuth.signUpWithEmail(email, pass)
+            val signupError = signupResult.exceptionOrNull()
+            when {
+                signupResult.isSuccess -> {
+                    syncHelper.setLocalUserSession(email)
+                    _syncStatus.value = SyncStatus.SYNCED
                     syncFirestore()
                     onComplete(true, "Akun baru dibuat & berhasil masuk")
-                } else {
-                    // Fallback to local session if Firebase provider is disabled or offline
+                }
+                signupError is FirebaseAuthUserCollisionException ->
+                    onComplete(false, "Email atau kata sandi salah")
+                isFirebaseUnavailable(signupError) -> {
                     syncHelper.setLocalUserSession(email)
+                    _syncStatus.value = SyncStatus.SYNCED
                     onComplete(true, "Berhasil masuk (Mode Cloud Lokal: $email)")
                 }
+                else -> onComplete(false, signupError?.localizedMessage ?: "Gagal masuk")
             }
         }
     }
@@ -905,11 +933,14 @@ class TobaccoViewModel(
         viewModelScope.launch {
             val result = firebaseAuth.signInAnonymously()
             if (result.isSuccess) {
+                syncHelper.setLocalUserSession("tamu_ecotobacco@cloud.com")
+                _syncStatus.value = SyncStatus.SYNCED
                 syncFirestore()
                 onComplete(true, "Berhasil masuk sebagai Tamu (Firebase)")
             } else {
                 // Fallback to local session if Firebase provider is disabled or offline
                 syncHelper.setLocalUserSession("tamu_ecotobacco@cloud.com")
+                _syncStatus.value = SyncStatus.SYNCED
                 onComplete(true, "Berhasil masuk sebagai Tamu (Mode Cloud Lokal)")
             }
         }
@@ -918,6 +949,7 @@ class TobaccoViewModel(
     fun signOutFirebase() {
         firebaseAuth.signOut()
         syncHelper.clearLocalUserSession()
+        _syncStatus.value = SyncStatus.DISCONNECTED
     }
 
     fun syncFirestore(onComplete: ((Boolean, String) -> Unit)? = null) {

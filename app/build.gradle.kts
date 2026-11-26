@@ -12,8 +12,8 @@ android {
         applicationId = "com.aistudio.ecotobacco.kfzqw"
         minSdk = 24
         targetSdk = 34
-        versionCode = 19
-        versionName = "4.7"
+        versionCode = 20
+        versionName = "4.8"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

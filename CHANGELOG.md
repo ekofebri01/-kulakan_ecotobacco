@@ -1,5 +1,17 @@
 # Changelog Eco Tobacco
 
+## v4.8 (Build 20) — 26 Nov 2026
+**Penyelarasan Satuan Database, Tanggal Nota, Kamera Cepat, & Persistensi Login Cloud**
+
+### What's New
+- **Penyelarasan Satuan Database Hasil Scan**: Setiap barang hasil ekstraksi nota otomatis mencocokkan satuan dengan produk di database (lengkap dengan badge status DB), serta menyediakan input satuan dan tombol chip cepat (*pack*, *slop*, *bal*, *kg*, *ons*, *pcs*) pada mode edit agar database tidak tertimpa nilai default.
+- **Deteksi & Tampilan Tanggal Nota**: Dialog *Hasil Ekstraksi Nota* kini menampilkan baris **Tanggal Nota** lengkap dengan badge *Terdeteksi / Hari Ini* dan opsi pemilih tanggal (*DatePickerDialog*) interaktif sebelum transaksi disimpan.
+- **Pindai Langsung Buka Kamera**: Mengetuk tombol *Pindai* di layar Input Kulakan kini langsung membuka kamera scanner nota tanpa melewati halaman perantara, dengan pemrosesan OCR otomatis saat gambar tertangkap.
+- **Akses Galeri 1-Klik**: Tersedia tombol Galeri cepat di sebelah tombol Pindai dan di dalam scanner untuk memilih foto nota dari HP.
+- **Persistensi Login Cloud & Inisialisasi Firebase**: Sesi login akun Cloud disimpan permanen di penyimpanan lokal (`SharedPreferences`), dan `FirebaseApp` diinisialisasi sejak aplikasi berjalan (`Application.onCreate`), sehingga akun tetap aktif dan tidak logout saat aplikasi ditutup lalu dibuka kembali.
+
+---
+
 ## v4.7 (Build 19) — 25 Nov 2026
 **Rombak Input Kulakan Multi-Item & Scanner Nota Galeri**
 

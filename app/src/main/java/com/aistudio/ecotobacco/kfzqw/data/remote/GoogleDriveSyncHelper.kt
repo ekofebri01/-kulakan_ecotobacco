@@ -4,12 +4,16 @@ import android.content.Context
 import android.content.Intent
 
 class GoogleDriveSyncHelper(private val context: Context) {
-    var isAutoSyncEnabled: Boolean = false
-    var isConnected: Boolean = false
+    // Sesi disimpan permanen agar login tidak hilang saat app ditutup.
+    private val prefs = context.getSharedPreferences("google_sync_prefs", Context.MODE_PRIVATE)
+
+    var isAutoSyncEnabled: Boolean = prefs.getBoolean("auto_sync_enabled", false)
+        set(value) { field = value; prefs.edit().putBoolean("auto_sync_enabled", value).apply() }
+    var isConnected: Boolean = prefs.getBoolean("local_connected", false)
     var isOnline: Boolean = true
-    var userEmail: String? = null
-    var userGoogleSub: String? = null
-    var isLocalUserConnected: Boolean = false
+    var userEmail: String? = prefs.getString("user_email", null)
+    var userGoogleSub: String? = prefs.getString("user_google_sub", null)
+    var isLocalUserConnected: Boolean = prefs.getBoolean("local_connected", false)
 
     fun listBackupFiles(): List<DriveBackupFile> {
         return emptyList()
@@ -27,6 +31,10 @@ class GoogleDriveSyncHelper(private val context: Context) {
         userEmail = email
         isLocalUserConnected = true
         isConnected = true
+        prefs.edit()
+            .putString("user_email", email)
+            .putBoolean("local_connected", true)
+            .apply()
     }
 
     fun clearLocalUserSession() {
@@ -34,6 +42,12 @@ class GoogleDriveSyncHelper(private val context: Context) {
         userGoogleSub = null
         isLocalUserConnected = false
         isConnected = false
+        prefs.edit()
+            .remove("user_email")
+            .remove("user_google_sub")
+            .remove("access_token")
+            .putBoolean("local_connected", false)
+            .apply()
     }
 
     fun fetchUserEmail(token: String) {

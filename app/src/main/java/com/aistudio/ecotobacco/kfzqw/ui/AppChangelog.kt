@@ -12,6 +12,26 @@ data class ChangelogRelease(
 object AppChangelog {
     val releases: List<ChangelogRelease> = listOf(
         ChangelogRelease(
+            version = "4.8",
+            buildNumber = 20,
+            date = "26 Nov 2026",
+            headline = "Penyelarasan Satuan Database, Tanggal Nota, & Login Cloud",
+            highlights = listOf(
+                "Satuan hasil scan otomatis diselaraskan dengan database produk (tanpa tertimpa default)",
+                "Dialog hasil scan kini menampilkan dan bisa mengedit Tanggal Nota",
+                "Tombol Pindai langsung membuka kamera scanner tanpa halaman perantara",
+                "Persistensi sesi login Cloud tetap aktif setelah aplikasi ditutup"
+            ),
+            changes = listOf(
+                "Mencocokkan barang hasil scan secara otomatis dengan database produk agar satuannya langsung tersinkron dan database tidak tertimpa default.",
+                "Menambahkan kolom input Satuan serta chip pilihan cepat (pack, slop, bal, kg, dll.) pada mode edit hasil scan.",
+                "Menampilkan kolom Tanggal Nota pada dialog Hasil Ekstraksi Nota dengan indikator status dan pemilih tanggal (DatePickerDialog).",
+                "Tombol Pindai di Input Kulakan langsung membuka kamera dokumen dan mengekstrak teks otomatis begitu foto diambil.",
+                "Menyediakan tombol cepat Galeri langsung di sebelah tombol Pindai.",
+                "Menyimpan sesi login akun Cloud secara permanen di SharedPreferences dan menginisialisasi Firebase sejak startup aplikasi agar login tidak hilang saat aplikasi ditutup."
+            )
+        ),
+        ChangelogRelease(
             version = "4.7",
             buildNumber = 19,
             date = "25 Nov 2026",

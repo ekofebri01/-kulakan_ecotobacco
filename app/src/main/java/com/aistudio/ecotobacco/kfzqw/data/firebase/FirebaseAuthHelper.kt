@@ -1,6 +1,7 @@
 package com.aistudio.ecotobacco.kfzqw.data.firebase
 
 import android.content.Context
+import android.util.Log
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,15 +23,18 @@ class FirebaseAuthHelper(private val context: Context) {
     private val _authError = MutableStateFlow<String?>(null)
     val authError: StateFlow<String?> = _authError.asStateFlow()
 
-    val uid: String? get() = try { auth.currentUser?.uid } catch (e: Exception) { null }
+    val uid: String? get() = try { FirebaseInit.ensure(context); auth.currentUser?.uid } catch (e: Exception) { null }
 
     init {
         try {
+            FirebaseInit.ensure(context)
             _currentUser.value = auth.currentUser
             auth.addAuthStateListener { firebaseAuth ->
                 _currentUser.value = firebaseAuth.currentUser
             }
-        } catch (e: Exception) { }
+        } catch (e: Exception) {
+            Log.e("FirebaseAuthHelper", "Init auth gagal: ${e.message}", e)
+        }
     }
 
     suspend fun signInWithEmail(email: String, pass: String): Result<Unit> {

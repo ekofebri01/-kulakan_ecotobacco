@@ -7,11 +7,11 @@ Aplikasi Android berbasis **Kotlin** dan **Jetpack Compose (Material 3)** untuk 
 ## Fitur Utama
 
 - **Input Kulakan Multi-Item**: Catat banyak barang sekaligus dalam satu keranjang transaksi, lengkap dengan kolom kuantitas & harga modal yang ringkas serta dukungan pecahan **0,5** dan tombol cepat `±0,5`.
-- **AI Scanner Nota (Kamera & Galeri)**: Pindai struk fisik lewat ML Kit Document Scanner atau pilih foto/screenshot struk langsung dari **Galeri HP** menggunakan Android Photo Picker (tanpa izin penyimpanan tambahan), dilengkapi pemandu crop visual dan parser nota 2-baris/1-baris Indonesia (termasuk toleransi OCR `Rp`, `Rd`, `Ro`, `Rb`).
-- **Master Produk & Harga**: Kelola katalog tembakau, sub-kategori, satuan kustom (`kg`, `ons`, `pcs`, dll.), harga beli modal, dan harga jual dengan kalkulasi margin otomatis.
+- **AI Scanner Nota (Kamera Langsung & Galeri)**: Pindai struk fisik secara instan lewat kamera scanner otomatis atau pilih dari **Galeri HP** (Android Photo Picker), lengkap dengan pemandu crop visual, deteksi dan editor **Tanggal Nota**, serta penyelarasan satuan barang otomatis dengan database produk master.
+- **Master Produk & Harga**: Kelola katalog tembakau, sub-kategori, satuan kustom (`kg`, `ons`, `pcs`, `pack`, `slop`, `bal`, dll.), harga beli modal, dan harga jual dengan kalkulasi margin otomatis.
 - **Perencanaan Kulakan (*Procurement Planning*)**: Susun rencana belanja stok berikutnya dan konversi ke transaksi kulakan.
 - **Laporan & Analitik**: Ringkasan pengeluaran bulanan, grafik tren kulakan, filter riwayat transaksi, dan ekspor/impor CSV.
-- **Backup Perangkat & Cloud Sync**: Pencadangan otomatis ke perangkat (dengan fitur *Pulihkan dari Perangkat*) serta sinkronisasi Firebase Firestore & Google Sign-In.
+- **Backup Perangkat & Cloud Sync Permanen**: Pencadangan otomatis ke perangkat serta sinkronisasi Firebase Firestore dengan persistensi sesi login akun yang tetap aktif saat aplikasi ditutup dan dibuka kembali.
 - **Widget Layar Beranda**: Widget Android untuk melihat ringkasan dan akses cepat *Input Kulakan* maupun *Rencana Belanja*.
 - **GitHub In-App Auto-Update & What's New**: Pemeriksaan rilis baru langsung dari GitHub Releases, pembersihan cache APK otomatis, serta dialog **What's New & Changelog** di dalam aplikasi.
 
