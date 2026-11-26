@@ -111,6 +111,11 @@ class TobaccoViewModel(
     private val _themeMode = MutableStateFlow(appPrefs.getString("theme_mode", "SYSTEM") ?: "SYSTEM")
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
+    private val _defaultReportFilter = MutableStateFlow(
+        normalizeReportFilter(appPrefs.getString("default_report_filter", "All Time"))
+    )
+    val defaultReportFilter: StateFlow<String> = _defaultReportFilter.asStateFlow()
+
     private val _customColor = MutableStateFlow(appPrefs?.getInt("custom_color", 0xFF10B981.toInt()) ?: 0xFF10B981.toInt())
     val customColor: StateFlow<Int> = _customColor.asStateFlow()
 
@@ -167,10 +172,37 @@ class TobaccoViewModel(
     private val _customTextColor = MutableStateFlow(appPrefs.getInt("ui_custom_text_color", 0)) // 0 means use theme default
     val customTextColor = _customTextColor.asStateFlow()
 
+    private val _customBackgroundColor = MutableStateFlow(appPrefs.getInt("ui_custom_bg_color", 0)) // 0 means use theme default
+    val customBackgroundColor = _customBackgroundColor.asStateFlow()
+
+    private val _showMatrixBackground = MutableStateFlow(appPrefs.getBoolean("ui_show_matrix_bg", true))
+    val showMatrixBackground = _showMatrixBackground.asStateFlow()
+
     fun setThemeMode(mode: String) {
         _themeMode.value = mode
         appPrefs.edit { putString("theme_mode", mode) }
         triggerAutoSync()
+    }
+
+    fun setDefaultReportFilter(filter: String) {
+        val normalized = normalizeReportFilter(filter)
+        _defaultReportFilter.value = normalized
+        appPrefs.edit { putString("default_report_filter", normalized) }
+    }
+
+    companion object {
+        val REPORT_FILTER_OPTIONS = listOf("Harian", "Mingguan", "Bulanan", "Tahunan", "All Time")
+
+        fun normalizeReportFilter(value: String?): String {
+            return when (value?.trim()?.lowercase(Locale.ROOT)) {
+                "harian" -> "Harian"
+                "mingguan" -> "Mingguan"
+                "bulanan", "bulan ini" -> "Bulanan"
+                "tahunan" -> "Tahunan"
+                "semua", "semua waktu", "all time", "alltime" -> "All Time"
+                else -> "All Time"
+            }
+        }
     }
 
     fun setCustomColor(colorInt: Int) {
@@ -209,17 +241,68 @@ class TobaccoViewModel(
         triggerAutoSync()
     }
 
+    fun setCustomBackgroundColor(colorInt: Int) {
+        _customBackgroundColor.value = colorInt
+        appPrefs.edit { putInt("ui_custom_bg_color", colorInt) }
+        triggerAutoSync()
+    }
+
+    fun setShowMatrixBackground(enabled: Boolean) {
+        _showMatrixBackground.value = enabled
+        appPrefs.edit { putBoolean("ui_show_matrix_bg", enabled) }
+        triggerAutoSync()
+    }
+
+    fun applyThemePreset(
+        mode: String,
+        accentColor: Int,
+        backgroundColor: Int,
+        textColor: Int,
+        cornerRadiusDp: Int? = null,
+        matrixEnabled: Boolean? = null
+    ) {
+        _themeMode.value = mode
+        _customColor.value = accentColor
+        _customBackgroundColor.value = backgroundColor
+        _customTextColor.value = textColor
+        appPrefs.edit {
+            putString("theme_mode", mode)
+            putInt("custom_color", accentColor)
+            putInt("ui_custom_bg_color", backgroundColor)
+            putInt("ui_custom_text_color", textColor)
+            cornerRadiusDp?.let {
+                _cornerRadius.value = it
+                putInt("ui_corner_radius", it)
+            }
+            matrixEnabled?.let {
+                _showMatrixBackground.value = it
+                putBoolean("ui_show_matrix_bg", it)
+            }
+        }
+        triggerAutoSync()
+    }
+
     fun resetUiCustomization() {
+        _themeMode.value = "SYSTEM"
+        _customColor.value = 0xFF10B981.toInt()
         _fontSizeScale.value = 1.0f
-        appPrefs.edit { putFloat("ui_font_size_scale", 1.0f) }
         _paddingScale.value = 1.0f
-        appPrefs.edit { putFloat("ui_padding_scale", 1.0f) }
         _buttonHeight.value = 56
-        appPrefs.edit { putInt("ui_button_height", 56) }
         _cornerRadius.value = 16
-        appPrefs.edit { putInt("ui_corner_radius", 16) }
         _customTextColor.value = 0
-        appPrefs.edit { putInt("ui_custom_text_color", 0) }
+        _customBackgroundColor.value = 0
+        _showMatrixBackground.value = true
+        appPrefs.edit {
+            putString("theme_mode", "SYSTEM")
+            putInt("custom_color", 0xFF10B981.toInt())
+            putFloat("ui_font_size_scale", 1.0f)
+            putFloat("ui_padding_scale", 1.0f)
+            putInt("ui_button_height", 56)
+            putInt("ui_corner_radius", 16)
+            putInt("ui_custom_text_color", 0)
+            putInt("ui_custom_bg_color", 0)
+            putBoolean("ui_show_matrix_bg", true)
+        }
         triggerAutoSync()
     }
 
@@ -232,12 +315,21 @@ class TobaccoViewModel(
     )
     val lastWebSyncTime: StateFlow<Long?> = _lastWebSyncTime.asStateFlow()
 
+    private val customUnitLock = Any()
+
     fun addCustomUnit(unit: String) {
-        val current = _customUnits.value.toMutableSet()
-        if (current.add(unit)) {
-            val newList = current.toList().sorted()
-            _customUnits.value = newList
-            appPrefs?.edit { putStringSet("custom_units", current) }
+        val cleaned = unit.trim()
+        if (cleaned.isBlank() || cleaned.equals("Custom", ignoreCase = true) || cleaned.equals("unit", ignoreCase = true)) {
+            return
+        }
+        synchronized(customUnitLock) {
+            val current = _customUnits.value.toMutableSet()
+            if (current.none { it.equals(cleaned, ignoreCase = true) }) {
+                current.add(cleaned)
+                val newList = current.toList().sortedBy { it.lowercase(Locale.ROOT) }
+                _customUnits.value = newList
+                appPrefs?.edit { putStringSet("custom_units", current.toSet()) }
+            }
         }
     }
 
@@ -447,24 +539,27 @@ class TobaccoViewModel(
     private val _isFetchingBackups = MutableStateFlow(false)
     val isFetchingBackups: StateFlow<Boolean> = _isFetchingBackups.asStateFlow()
 
+    private fun allCandidateCloudUids(explicitUid: String? = null): List<String> {
+        return listOfNotNull(
+            explicitUid?.takeIf { it.isNotBlank() },
+            firebaseAuth.uid?.takeIf { it.isNotBlank() },
+            syncHelper.userGoogleSub?.takeIf { it.isNotBlank() },
+            syncHelper.userEmail?.takeIf { it.isNotBlank() },
+            "eco_guest_user"
+        ).distinct()
+    }
+
     fun fetchDriveBackupFiles() = viewModelScope.launch(Dispatchers.IO) {
         _isFetchingBackups.value = true
         val results = mutableListOf<DriveBackupFile>()
         try {
-            // 1. Fetch from Firestore if user has an active Cloud session / Firebase UID
-            var uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
-            if (uid.isNullOrBlank() && syncHelper.isLocalUserConnected) {
-                uid = syncHelper.userEmail
-            }
-            val uidsToQuery = mutableListOf<String>()
-            if (!uid.isNullOrBlank()) uidsToQuery.add(uid)
-            if (!uidsToQuery.contains("eco_guest_user")) uidsToQuery.add("eco_guest_user")
-
+            // 1. Fetch from Firestore across active UIDs, deduplicated by id and name
+            val uidsToQuery = allCandidateCloudUids()
             for (u in uidsToQuery) {
                 try {
                     val firestoreBackups = firestoreSync.listCloudBackups(u)
                     for (fb in firestoreBackups) {
-                        if (results.none { it.id == fb.id || it.name == fb.name }) {
+                        if (results.none { it.id == fb.id || it.name.equals(fb.name, ignoreCase = true) }) {
                             results.add(fb)
                         }
                     }
@@ -473,10 +568,15 @@ class TobaccoViewModel(
                 }
             }
 
-            // 2. Fetch from Local Cloud Backups Mirror (context.filesDir/cloud_backups/)
+            // 2. Fetch from Local Cloud Backups Mirror ONLY if not already listed from Firestore
             val localCloudBackups = listLocalCloudMirrorBackups()
             for (localBkp in localCloudBackups) {
-                if (results.none { it.id == localBkp.id || it.name == localBkp.name }) {
+                val alreadyRepresented = results.any {
+                    it.id == localBkp.id ||
+                        it.name.equals(localBkp.name, ignoreCase = true) ||
+                        (localBkp.name == "eco_tobacco_cloud_backup.json" && it.id == "firestore_latest_backup")
+                }
+                if (!alreadyRepresented) {
                     results.add(localBkp)
                 }
             }
@@ -495,10 +595,11 @@ class TobaccoViewModel(
                 }
             }
 
-            // 4. Fallback: If still empty, check auto backup file on device
-            val autoBackupFile = getBackupFile(getApplication())
-            if (autoBackupFile.exists() && autoBackupFile.length() > 0L) {
-                if (results.none { it.id == "local_auto_backup" || it.name == "eco_tobacco_sync_data_auto.json" }) {
+            // 4. Fallback ONLY when results is completely empty: check internal auto backup file
+            if (results.isEmpty()) {
+                val candidates = getBackupFileCandidates(getApplication())
+                val autoBackupFile = candidates.firstOrNull { it.exists() && it.length() > 0L }
+                if (autoBackupFile != null) {
                     val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.getDefault()).apply {
                         timeZone = TimeZone.getTimeZone("UTC")
                     }
@@ -506,6 +607,7 @@ class TobaccoViewModel(
                         DriveBackupFile(
                             id = "local_auto_backup",
                             name = "eco_tobacco_sync_data_auto.json",
+                            timestamp = autoBackupFile.lastModified(),
                             modifiedTime = sdf.format(Date(autoBackupFile.lastModified())),
                             source = "Penyimpanan Cadangan Lokal",
                             itemCountText = "Cadangan Otomatis Internal",
@@ -516,42 +618,66 @@ class TobaccoViewModel(
             }
         } finally {
             withContext(Dispatchers.Main) {
-                _driveBackupFiles.value = results
+                _driveBackupFiles.value = results.sortedByDescending { it.timestamp }
                 _isFetchingBackups.value = false
             }
         }
     }
 
     fun deleteDriveBackupFile(file: DriveBackupFile, onComplete: (Boolean) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
-        // Optimistic UI update so it instantly disappears from UI
-        _driveBackupFiles.value = _driveBackupFiles.value.filter { it.id != file.id }
-        
-        var success = true
+        // Optimistic UI update
+        _driveBackupFiles.value = _driveBackupFiles.value.filterNot {
+            it.id == file.id && it.name == file.name
+        }
+
+        var remoteAnyDeleted = false
+        var hadRemoteFailure = false
         try {
-            if (file.source == "Cloud Firestore") {
-                val uid = firebaseAuth.uid ?: syncHelper.userGoogleSub ?: syncHelper.userEmail
-                if (!uid.isNullOrBlank()) {
-                    firestoreSync.deleteCloudBackup(uid, file.id)
+            val candidateUids = allCandidateCloudUids(file.ownerUid)
+            if (file.source == "Cloud Firestore" || file.id.startsWith("cloud_backup_") || file.id.startsWith("firestore_") || file.id.startsWith("local_cloud_")) {
+                val targetIds = buildList {
+                    add(file.id)
+                    if (file.id.startsWith("local_cloud_")) {
+                        val stripped = file.id.removePrefix("local_cloud_")
+                        add(stripped)
+                        if (stripped == "eco_tobacco_cloud_backup.json") {
+                            add("cloud_backup_main")
+                            add("firestore_latest_backup")
+                        }
+                    }
+                }.distinct()
+
+                for (uid in candidateUids) {
+                    for (targetId in targetIds) {
+                        val ok = firestoreSync.deleteCloudBackup(uid, targetId)
+                        if (ok) remoteAnyDeleted = true else hadRemoteFailure = true
+                    }
                 }
                 deleteLocalCloudMirrorBackup(file.name)
+                if (file.id == "firestore_latest_backup" || file.id == "cloud_backup_main") {
+                    deleteLocalCloudMirrorBackup("eco_tobacco_cloud_backup.json")
+                }
             } else if (file.source == "Google Drive") {
-                success = syncHelper.deleteFile(file.id)
-            } else if (file.id == "local_auto_backup" || file.source.contains("Lokal")) {
-                val autoFile = getBackupFile(getApplication())
-                if (autoFile.exists()) autoFile.delete()
+                remoteAnyDeleted = syncHelper.deleteFile(file.id)
+                hadRemoteFailure = !remoteAnyDeleted
+            }
+
+            if (file.id == "local_auto_backup" || file.source.contains("Lokal", ignoreCase = true)) {
+                getBackupFileCandidates(getApplication()).forEach { candidate ->
+                    if (candidate.exists()) candidate.delete()
+                }
                 deleteLocalCloudMirrorBackup(file.name)
-            } else {
-                deleteLocalCloudMirrorBackup(file.name)
+                remoteAnyDeleted = true
             }
         } catch (e: Exception) {
             AppLogger.w("Backup", "deleteDriveBackupFile error: ${e.message}")
-            success = false
+            hadRemoteFailure = true
         }
-        
-        kotlinx.coroutines.delay(400)
+
+        val finalSuccess = remoteAnyDeleted || !hadRemoteFailure
         fetchDriveBackupFiles()
         withContext(Dispatchers.Main) {
-            onComplete(success)
+            onComplete(finalSuccess)
         }
     }
 
@@ -565,6 +691,34 @@ class TobaccoViewModel(
             withContext(Dispatchers.Main) {
                 onComplete(success)
             }
+        }
+    }
+
+    fun deleteAllCloudBackups(onComplete: (Boolean) -> Unit) = viewModelScope.launch(Dispatchers.IO) {
+        var anySuccess = false
+        try {
+            val candidateUids = allCandidateCloudUids()
+            for (uid in candidateUids) {
+                if (firestoreSync.deleteAllCloudBackups(uid)) {
+                    anySuccess = true
+                }
+            }
+            val mirrorDir = File(getApplication<Application>().filesDir, "cloud_backups")
+            if (mirrorDir.exists()) {
+                mirrorDir.listFiles()?.forEach { it.delete() }
+            }
+            getBackupFileCandidates(getApplication()).forEach { candidate ->
+                if (candidate.exists()) candidate.delete()
+            }
+            withContext(Dispatchers.Main) {
+                _driveBackupFiles.value = emptyList()
+            }
+        } catch (e: Exception) {
+            AppLogger.w("Backup", "deleteAllCloudBackups error: ${e.message}")
+        }
+        fetchDriveBackupFiles()
+        withContext(Dispatchers.Main) {
+            onComplete(anySuccess || _driveBackupFiles.value.isEmpty())
         }
     }
 
@@ -805,13 +959,24 @@ class TobaccoViewModel(
         viewModelScope.launch {
             val apk = githubUpdateManager.downloadUpdateInApp(release)
             if (apk != null) {
-                githubUpdateManager.installApk(apk)
+                githubUpdateManager.installApkInApp(apk, release)
             }
         }
     }
 
-    fun installDownloadedApk(apkFile: File): Boolean {
+    fun installDownloadedApk(apkFile: File, release: GitHubReleaseInfo): Boolean {
+        viewModelScope.launch {
+            githubUpdateManager.installApkInApp(apkFile, release)
+        }
+        return true
+    }
+
+    fun installApkSystemFallback(apkFile: File): Boolean {
         return githubUpdateManager.installApk(apkFile)
+    }
+
+    fun openInstallPermissionSettings() {
+        githubUpdateManager.openInstallPermissionSettings()
     }
 
     fun dismissUpdateDialog() {
@@ -1015,6 +1180,8 @@ class TobaccoViewModel(
                                 setButtonHeight(settings.buttonHeight)
                                 setCornerRadius(settings.cornerRadius)
                                 setCustomTextColor(settings.customTextColor)
+                                setCustomBackgroundColor(settings.customBackgroundColor)
+                                setShowMatrixBackground(settings.showMatrixBackground)
                                 val unitSet = settings.customUnits.toSet()
                                 _customUnits.value = settings.customUnits.sorted()
                                 appPrefs?.edit { putStringSet("custom_units", unitSet) }
@@ -1114,7 +1281,9 @@ class TobaccoViewModel(
                             paddingScale = _paddingScale.value,
                             buttonHeight = _buttonHeight.value,
                             cornerRadius = _cornerRadius.value,
-                            customTextColor = _customTextColor.value
+                            customTextColor = _customTextColor.value,
+                            customBackgroundColor = _customBackgroundColor.value,
+                            showMatrixBackground = _showMatrixBackground.value
                         ),
                         lastUpdated = System.currentTimeMillis(),
                         deletedTransactions = getDeletedTransactionKeys().toList()
@@ -1382,16 +1551,18 @@ class TobaccoViewModel(
         }
         triggerAutoSync(forceOverwriteRemote = true)
     }
-    fun addTransaction(date: Long, productName: String, quantity: Double, unitPrice: Double, supplier: String = "", unit: String = "kg") = viewModelScope.launch {
-        syncProductFromTransaction(productName, unitPrice, unit)
+    fun addTransaction(date: Long, productName: String, quantity: Double, unitPrice: Double, supplier: String = "", unit: String = "kg") = viewModelScope.launch(Dispatchers.IO) {
+        val cleanUnit = unit.trim().ifBlank { "kg" }
+        addCustomUnit(cleanUnit)
+        syncProductFromTransaction(productName, unitPrice, cleanUnit)
         val tx = TransactionEntity(
             date = date,
-            productName = productName,
+            productName = productName.trim(),
             quantity = quantity,
             unitPrice = unitPrice,
             total = quantity * unitPrice,
-            supplier = supplier,
-            unit = unit
+            supplier = supplier.trim(),
+            unit = cleanUnit
         )
         repository.insertTransaction(tx)
         firebaseAuth.uid?.let { uid ->
@@ -1399,19 +1570,24 @@ class TobaccoViewModel(
         }
         triggerAutoSync(forceOverwriteRemote = true)
     }
-    fun updateTransaction(id: Long, date: Long, productName: String, quantity: Double, unitPrice: Double, supplier: String = "", unit: String = "kg") = viewModelScope.launch {
-        repository.updateTransaction(
-            TransactionEntity(
-                id = id,
-                date = date,
-                productName = productName,
-                quantity = quantity,
-                unitPrice = unitPrice,
-                total = quantity * unitPrice,
-                supplier = supplier,
-                unit = unit
-            )
+    fun updateTransaction(id: Long, date: Long, productName: String, quantity: Double, unitPrice: Double, supplier: String = "", unit: String = "kg") = viewModelScope.launch(Dispatchers.IO) {
+        val cleanUnit = unit.trim().ifBlank { "kg" }
+        addCustomUnit(cleanUnit)
+        val existingTx = repository.getTransactionById(id)
+        val updatedTx = (existingTx ?: TransactionEntity(id = id)).copy(
+            date = date,
+            productName = productName.trim(),
+            quantity = quantity,
+            unitPrice = unitPrice,
+            total = quantity * unitPrice,
+            supplier = supplier.trim(),
+            unit = cleanUnit
         )
+        repository.updateTransaction(updatedTx)
+        syncProductFromTransaction(updatedTx.productName, updatedTx.unitPrice, cleanUnit)
+        firebaseAuth.uid?.let { uid ->
+            firestoreSync.persistTransaction(uid, updatedTx)
+        }
         triggerAutoSync(forceOverwriteRemote = true)
     }
     fun deleteTransaction(id: Long) = viewModelScope.launch {
@@ -1499,8 +1675,9 @@ class TobaccoViewModel(
             item.copy(unit = resolvedUnit)
         }
 
-        // Sync each scanned item to product database
+        // Sync each scanned item to product database & saved units
         resolvedItems.forEach { item ->
+            addCustomUnit(item.unit)
             val uPrice = if (item.unitPrice > 0) item.unitPrice else (item.totalPrice / item.quantity)
             syncProductFromTransaction(item.name, uPrice, item.unit)
         }
@@ -1713,7 +1890,9 @@ class TobaccoViewModel(
                 paddingScale = _paddingScale.value,
                 buttonHeight = _buttonHeight.value,
                 cornerRadius = _cornerRadius.value,
-                customTextColor = _customTextColor.value
+                customTextColor = _customTextColor.value,
+                customBackgroundColor = _customBackgroundColor.value,
+                showMatrixBackground = _showMatrixBackground.value
             ),
             categories = localCategoriesData,
             lastUpdated = System.currentTimeMillis(),
@@ -2127,7 +2306,9 @@ class TobaccoViewModel(
                     paddingScale = parseFlexibleDouble(settingsObj.opt("paddingScale"), 1.0).toFloat(),
                     buttonHeight = settingsObj.optInt("buttonHeight", 56),
                     cornerRadius = settingsObj.optInt("cornerRadius", 16),
-                    customTextColor = settingsObj.optInt("customTextColor", 0)
+                    customTextColor = settingsObj.optInt("customTextColor", 0),
+                    customBackgroundColor = settingsObj.optInt("customBackgroundColor", 0),
+                    showMatrixBackground = settingsObj.optBoolean("showMatrixBackground", true)
                 )
             }
 
@@ -2332,6 +2513,8 @@ class TobaccoViewModel(
             setButtonHeight(settings.buttonHeight)
             setCornerRadius(settings.cornerRadius)
             setCustomTextColor(settings.customTextColor)
+            setCustomBackgroundColor(settings.customBackgroundColor)
+            setShowMatrixBackground(settings.showMatrixBackground)
             val unitSet = settings.customUnits.toSet()
             _customUnits.value = settings.customUnits.sorted()
             appPrefs?.edit { putStringSet("custom_units", unitSet) }

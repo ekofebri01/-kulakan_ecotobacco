@@ -67,11 +67,11 @@ fun SplashScreen(
         ) {
             // App Logo
             Image(
-                painter = painterResource(id = R.drawable.kulakan_eco_tobacco),
+                painter = painterResource(id = R.drawable.ic_launcher_art),
                 contentDescription = "App Logo",
                 modifier = Modifier
-                    .size(240.dp)
-                    .clip(CircleShape)
+                    .size(188.dp)
+                    .clip(androidx.compose.foundation.shape.RoundedCornerShape(40.dp))
             )
 
             Spacer(modifier = Modifier.height(28.dp))

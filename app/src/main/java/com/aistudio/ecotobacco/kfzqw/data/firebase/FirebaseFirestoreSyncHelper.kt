@@ -298,7 +298,7 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
 
     /**
      * Lists all cloud backup snapshots stored in Firestore for the given user.
-     * Uses resilient queries without requiring specific composite indexes.
+     * Avoids duplicate/synthetic entries so each snapshot appears once.
      */
     suspend fun listCloudBackups(userId: String): List<DriveBackupFile> = withContext(Dispatchers.IO) {
         if (userId.isBlank()) return@withContext emptyList()
@@ -310,7 +310,7 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
 
         val userDoc = fs.collection("users").document(userId)
 
-        // 1. Query 'backups' subcollection (resilient in-memory sorting)
+        // 1. Query 'backups' subcollection (canonical backup snapshots)
         try {
             val snapshot = userDoc.collection("backups").limit(50).get().await()
             val sortedDocs = snapshot.documents.sortedByDescending { it.getLong("timestamp") ?: 0L }
@@ -329,10 +329,12 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
                     DriveBackupFile(
                         id = id,
                         name = name,
+                        timestamp = timestamp,
                         modifiedTime = sdf.format(Date(timestamp)),
                         source = "Cloud Firestore",
                         itemCountText = countText,
-                        jsonData = jsonData
+                        jsonData = jsonData,
+                        ownerUid = userId
                     )
                 )
             }
@@ -340,61 +342,36 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
             Log.w("FirestoreSyncHelper", "Query backups subcollection notice: ${e.message}")
         }
 
-        // 2. Check 'latest_backup' snapshot in 'data' collection
-        try {
-            val latestBackupDoc = userDoc.collection("data").document("latest_backup").get().await()
-            if (latestBackupDoc.exists()) {
-                val timestamp = latestBackupDoc.getLong("timestamp") ?: System.currentTimeMillis()
-                val json = latestBackupDoc.getString("jsonData")
-                var summaryText = "Snapshot Cadangan Cloud Terkini"
+        // 2. Fallback to 'latest_backup' ONLY when 'backups' subcollection is empty
+        if (list.isEmpty()) {
+            try {
+                val latestBackupDoc = userDoc.collection("data").document("latest_backup").get().await()
+                val json = if (latestBackupDoc.exists()) latestBackupDoc.getString("jsonData") else null
                 if (!json.isNullOrBlank()) {
+                    val timestamp = latestBackupDoc.getLong("timestamp") ?: System.currentTimeMillis()
+                    var summaryText = "Snapshot Cadangan Cloud Terkini"
                     try {
                         val obj = org.json.JSONObject(json)
                         val p = obj.optJSONArray("products")?.length() ?: 0
                         val t = obj.optJSONArray("transactions")?.length() ?: 0
                         summaryText = "$p Produk • $t Transaksi (Cadangan Cloud)"
                     } catch (e: Exception) { /* ignore */ }
-                }
-                if (list.none { it.id == "firestore_latest_backup" || it.id.startsWith("cloud_backup_") }) {
                     list.add(
-                        0,
                         DriveBackupFile(
                             id = "firestore_latest_backup",
                             name = "eco_tobacco_snapshot_terkini.json",
+                            timestamp = timestamp,
                             modifiedTime = sdf.format(Date(timestamp)),
                             source = "Cloud Firestore",
                             itemCountText = summaryText,
-                            jsonData = json
+                            jsonData = json,
+                            ownerUid = userId
                         )
                     )
                 }
+            } catch (e: Exception) {
+                Log.w("FirestoreSyncHelper", "Query latest_backup doc notice: ${e.message}")
             }
-        } catch (e: Exception) {
-            Log.w("FirestoreSyncHelper", "Query latest_backup doc notice: ${e.message}")
-        }
-
-        // 3. Fallback: Check metadata if no backup snapshots yet exist
-        try {
-            val metaDoc = userDoc.collection("data").document("metadata").get().await()
-            if (metaDoc.exists()) {
-                val lastSync = metaDoc.getLong("lastSyncTimestamp") ?: System.currentTimeMillis()
-                val totalProd = metaDoc.getLong("totalProducts")?.toInt() ?: 0
-                val totalTx = metaDoc.getLong("totalTransactions")?.toInt() ?: 0
-                if (list.none { it.id == "firestore_latest_sync" }) {
-                    list.add(
-                        DriveBackupFile(
-                            id = "firestore_latest_sync",
-                            name = "eco_tobacco_cloud_sync_aktif.json",
-                            modifiedTime = sdf.format(Date(lastSync)),
-                            source = "Cloud Firestore",
-                            itemCountText = "$totalProd Produk • $totalTx Transaksi (Data Cloud Terkini)",
-                            jsonData = null
-                        )
-                    )
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("FirestoreSyncHelper", "Query metadata doc notice: ${e.message}")
         }
 
         list
@@ -430,20 +407,63 @@ class FirebaseFirestoreSyncHelper(private val context: Context) {
     }
 
     /**
-     * Deletes a cloud backup snapshot from Firestore
+     * Deletes a cloud backup snapshot (or all legacy duplicates tied to it) from Firestore
      */
     suspend fun deleteCloudBackup(userId: String, backupId: String): Boolean = withContext(Dispatchers.IO) {
         if (userId.isBlank() || backupId.isBlank()) return@withContext false
         val fs = firestore ?: return@withContext false
         try {
-            if (backupId == "firestore_latest_backup") {
-                fs.collection("users").document(userId).collection("data").document("latest_backup").delete().await()
-            } else {
-                fs.collection("users").document(userId).collection("backups").document(backupId).delete().await()
+            val userDoc = fs.collection("users").document(userId)
+            when (backupId) {
+                "firestore_latest_sync" -> {
+                    userDoc.collection("data").document("metadata").delete().await()
+                    userDoc.collection("data").document("latest_backup").delete().await()
+                }
+                "firestore_latest_backup" -> {
+                    userDoc.collection("data").document("latest_backup").delete().await()
+                    userDoc.collection("backups").document("cloud_backup_main").delete().await()
+                }
+                "cloud_backup_main" -> {
+                    userDoc.collection("backups").document("cloud_backup_main").delete().await()
+                    userDoc.collection("data").document("latest_backup").delete().await()
+                }
+                else -> {
+                    userDoc.collection("backups").document(backupId).delete().await()
+                    // Also clean any matching doc whose stored "id" field equals backupId
+                    val snap = userDoc.collection("backups").whereEqualTo("id", backupId).get().await()
+                    for (d in snap.documents) {
+                        d.reference.delete().await()
+                    }
+                    // If no snapshots remain in backups, remove latest_backup too so it doesn't reappear
+                    val remaining = userDoc.collection("backups").limit(1).get().await()
+                    if (remaining.isEmpty) {
+                        userDoc.collection("data").document("latest_backup").delete().await()
+                    }
+                }
             }
             true
         } catch (e: Exception) {
             Log.w("FirestoreSyncHelper", "deleteCloudBackup error: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Deletes all backup snapshots in Firestore for the given user.
+     */
+    suspend fun deleteAllCloudBackups(userId: String): Boolean = withContext(Dispatchers.IO) {
+        if (userId.isBlank()) return@withContext false
+        val fs = firestore ?: return@withContext false
+        try {
+            val userDoc = fs.collection("users").document(userId)
+            val snapshot = userDoc.collection("backups").get().await()
+            for (doc in snapshot.documents) {
+                doc.reference.delete().await()
+            }
+            userDoc.collection("data").document("latest_backup").delete().await()
+            true
+        } catch (e: Exception) {
+            Log.w("FirestoreSyncHelper", "deleteAllCloudBackups error: ${e.message}")
             false
         }
     }

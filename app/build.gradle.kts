@@ -12,8 +12,8 @@ android {
         applicationId = "com.aistudio.ecotobacco.kfzqw"
         minSdk = 24
         targetSdk = 34
-        versionCode = 20
-        versionName = "4.8"
+        versionCode = 21
+        versionName = "4.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -71,6 +71,69 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+
+    val changelogOutDir = layout.buildDirectory.dir("generated/source/changelog/kotlin")
+    sourceSets.getByName("main").kotlin.srcDir(changelogOutDir)
+}
+
+val generateChangelogSource by tasks.registering {
+    val changelogFile = rootProject.file("CHANGELOG.md")
+    val outputDir = layout.buildDirectory.dir("generated/source/changelog/kotlin")
+
+    inputs.file(changelogFile).optional()
+    outputs.dir(outputDir)
+
+    doLast {
+        val rawText = if (changelogFile.exists()) {
+            changelogFile.readText(Charsets.UTF_8)
+        } else {
+            ""
+        }
+
+        fun escapeKotlinString(value: String): String = buildString(value.length + 32) {
+            for (ch in value) {
+                when (ch) {
+                    '\\' -> append("\\\\")
+                    '"' -> append("\\\"")
+                    '$' -> append("\\$")
+                    '\n' -> append("\\n")
+                    '\r' -> append("\\r")
+                    '\t' -> append("\\t")
+                    else -> append(ch)
+                }
+            }
+        }
+
+        val chunks = if (rawText.isEmpty()) {
+            listOf("")
+        } else {
+            rawText.chunked(12000)
+        }
+
+        val targetFile = outputDir.get().file("com/aistudio/ecotobacco/kfzqw/ui/GeneratedChangelogData.kt").asFile
+        targetFile.parentFile.mkdirs()
+
+        val sourceCode = buildString {
+            appendLine("package com.aistudio.ecotobacco.kfzqw.ui")
+            appendLine()
+            appendLine("internal object GeneratedChangelogData {")
+            appendLine("    val RAW_MARKDOWN: String = buildString {")
+            for (chunk in chunks) {
+                append("        append(\"")
+                append(escapeKotlinString(chunk))
+                appendLine("\")")
+            }
+            appendLine("    }")
+            appendLine("}")
+        }
+        targetFile.writeText(sourceCode, Charsets.UTF_8)
+    }
+}
+
+tasks.configureEach {
+    if (name == "preBuild" || name.startsWith("ksp") || (name.startsWith("compile") && name.endsWith("Kotlin"))) {
+        dependsOn(generateChangelogSource)
     }
 }
 

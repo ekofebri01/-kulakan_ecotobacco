@@ -1,5 +1,7 @@
 package com.aistudio.ecotobacco.kfzqw.ui
 
+import com.aistudio.ecotobacco.kfzqw.BuildConfig
+
 data class ChangelogRelease(
     val version: String,
     val buildNumber: Int,
@@ -10,83 +12,144 @@ data class ChangelogRelease(
 )
 
 object AppChangelog {
-    val releases: List<ChangelogRelease> = listOf(
-        ChangelogRelease(
-            version = "4.8",
-            buildNumber = 20,
-            date = "26 Nov 2026",
-            headline = "Penyelarasan Satuan Database, Tanggal Nota, & Login Cloud",
-            highlights = listOf(
-                "Satuan hasil scan otomatis diselaraskan dengan database produk (tanpa tertimpa default)",
-                "Dialog hasil scan kini menampilkan dan bisa mengedit Tanggal Nota",
-                "Tombol Pindai langsung membuka kamera scanner tanpa halaman perantara",
-                "Persistensi sesi login Cloud tetap aktif setelah aplikasi ditutup"
-            ),
-            changes = listOf(
-                "Mencocokkan barang hasil scan secara otomatis dengan database produk agar satuannya langsung tersinkron dan database tidak tertimpa default.",
-                "Menambahkan kolom input Satuan serta chip pilihan cepat (pack, slop, bal, kg, dll.) pada mode edit hasil scan.",
-                "Menampilkan kolom Tanggal Nota pada dialog Hasil Ekstraksi Nota dengan indikator status dan pemilih tanggal (DatePickerDialog).",
-                "Tombol Pindai di Input Kulakan langsung membuka kamera dokumen dan mengekstrak teks otomatis begitu foto diambil.",
-                "Menyediakan tombol cepat Galeri langsung di sebelah tombol Pindai.",
-                "Menyimpan sesi login akun Cloud secara permanen di SharedPreferences dan menginisialisasi Firebase sejak startup aplikasi agar login tidak hilang saat aplikasi ditutup."
-            )
-        ),
-        ChangelogRelease(
-            version = "4.7",
-            buildNumber = 19,
-            date = "25 Nov 2026",
-            headline = "Input Kulakan Multi-Item & Scan Nota dari Galeri",
-            highlights = listOf(
-                "Input kulakan manual mendukung banyak barang sekaligus (keranjang)",
-                "Form kuantitas & harga lebih compact dengan tombol cepat 0,5",
-                "Scan nota langsung dari Galeri HP dengan pemandu crop visual",
-                "Toleransi OCR mata uang struk thermal (Rp/Rd/Ro/Rb) lebih presisi"
-            ),
-            changes = listOf(
-                "Merombak layar Input Kulakan menjadi satu kartu form terpadu dengan daftar keranjang agar bisa mencatat banyak barang sekaligus.",
-                "Menyusun kolom kuantitas dan harga berdampingan secara ringkas serta mendukung pecahan 0,5 dan tombol ±0,5.",
-                "Menambahkan fitur Scan dari Galeri menggunakan Android Photo Picker (tanpa izin penyimpanan tambahan).",
-                "Menambahkan UI overlay pemandu crop visual pada AI Scanner Nota untuk membantu menyelaraskan struk.",
-                "Meningkatkan ReceiptParser agar mengenali salah baca OCR huruf mata uang seperti Rd, Ro, dan Rb.",
-                "Menambahkan popup What's New otomatis saat pertama kali membuka pembaruan aplikasi."
-            )
-        ),
-        ChangelogRelease(
-            version = "4.6",
-            buildNumber = 18,
-            date = "23 Nov 2026",
-            headline = "Pembaruan GitHub Updater & Scanner Nota Modular",
-            highlights = listOf(
-                "In-app GitHub Auto-Update lebih akurat dan aman",
-                "Pemisahan modul OCR/Scanner & peningkatan akurasi parser nota",
-                "Halaman What's New & Changelog langsung di Pengaturan"
-            ),
-            changes = listOf(
-                "Sinkronisasi cek versi otomatis langsung ke BuildConfig.VERSION_NAME agar tidak salah deteksi versi.",
-                "Menghapus pengecekan update ganda saat aplikasi dibuka dan mematuhi toggle Auto-Cek.",
-                "Validasi lampiran .apk pada GitHub Release agar tidak mengunduh halaman HTML secara keliru.",
-                "Dialog instalasi tetap siaga bila pengguna perlu mengaktifkan izin Sumber Tidak Dikenal.",
-                "Modularisasi scanner nota ke paket scanner/ (OcrEngine, ReceiptParser, ReceiptScannerManager) dengan dukungan nota kasir 2-baris, normalisasi typo OCR, dan validasi matematika."
-            )
-        ),
-        ChangelogRelease(
-            version = "4.5",
-            buildNumber = 17,
-            date = "2026",
-            headline = "Peningkatan LocalScanner & Pembersih Cache APK",
-            highlights = listOf(
-                "Pembacaan format harga Rupiah Indonesia & satuan barang",
-                "Auto-cleanup file installer APK lama"
-            ),
-            changes = listOf(
-                "Meningkatkan LocalScanner untuk membaca format harga Indonesia dan mendeteksi jumlah serta satuan barang.",
-                "Mengabaikan baris total/pembayaran dan memanfaatkan koordinat posisi teks OCR.",
-                "Menambahkan penanda needsReview pada item scan yang meragukan.",
-                "Menambahkan pembersih otomatis file APK sisa pembaruan di cache internal."
-            )
-        )
+    private val HEADER_REGEX = Regex(
+        """^##\s+v?([0-9]+(?:\.[0-9A-Za-z._-]+)*)(?:\s*\(\s*Build\s+(\d+)\s*\))?(?:\s*[—\-–]\s*(.+))?$""",
+        RegexOption.IGNORE_CASE
     )
+    private val BOLD_LINE_REGEX = Regex("""^\*\*(.+?)\*\*$""")
+    private val BULLET_REGEX = Regex("""^[-*]\s+(.+)$""")
+    private val BULLET_BOLD_TITLE_REGEX = Regex("""^\*\*(.+?)\*\*(?:\s*[:\-—–]\s*.*)?$""")
+    private val MARKDOWN_LINK_REGEX = Regex("""\[([^\]]+)]\([^)]+\)""")
+    private val MARKDOWN_BOLD_REGEX = Regex("""\*\*(.+?)\*\*""")
+    private val MARKDOWN_ITALIC_REGEX = Regex("""(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)""")
+    private val MARKDOWN_CODE_REGEX = Regex("""`([^`]+)`""")
+
+    val releases: List<ChangelogRelease> by lazy {
+        parseMarkdown(GeneratedChangelogData.RAW_MARKDOWN).ifEmpty {
+            listOf(defaultFallbackRelease())
+        }
+    }
 
     val latest: ChangelogRelease
-        get() = releases.first()
+        get() = releases.firstOrNull { it.version == BuildConfig.VERSION_NAME } ?: releases.first()
+
+    fun parseMarkdown(markdown: String): List<ChangelogRelease> {
+        if (markdown.isBlank()) return emptyList()
+
+        val result = mutableListOf<ChangelogRelease>()
+        var currentVersion: String? = null
+        var currentBuild = 0
+        var currentDate = ""
+        var currentHeadline: String? = null
+        var inHighlightsSection = false
+        val explicitHighlights = mutableListOf<String>()
+        val derivedHighlights = mutableListOf<String>()
+        val changes = mutableListOf<String>()
+
+        fun flushCurrent() {
+            val version = currentVersion ?: return
+            val finalChanges = if (changes.isNotEmpty()) {
+                changes.toList()
+            } else if (explicitHighlights.isNotEmpty()) {
+                explicitHighlights.toList()
+            } else {
+                listOf(currentHeadline ?: "Pembaruan aplikasi v$version")
+            }
+            val finalHighlights = explicitHighlights
+                .ifEmpty { derivedHighlights }
+                .ifEmpty { finalChanges }
+                .distinct()
+                .take(4)
+            val finalHeadline = currentHeadline
+                ?: finalHighlights.firstOrNull()
+                ?: "Pembaruan v$version"
+
+            result += ChangelogRelease(
+                version = version,
+                buildNumber = currentBuild,
+                date = currentDate,
+                headline = finalHeadline,
+                highlights = finalHighlights,
+                changes = finalChanges
+            )
+        }
+
+        markdown.replace("\r\n", "\n").lineSequence().forEach { rawLine ->
+            val line = rawLine.trim()
+            if (line.isEmpty() || line == "---" || (line.startsWith("# ") && currentVersion == null)) {
+                return@forEach
+            }
+
+            val headerMatch = HEADER_REGEX.matchEntire(line)
+            if (headerMatch != null) {
+                flushCurrent()
+                currentVersion = headerMatch.groupValues[1].trim()
+                currentBuild = headerMatch.groupValues[2].toIntOrNull() ?: 0
+                currentDate = headerMatch.groupValues[3].trim()
+                currentHeadline = null
+                inHighlightsSection = false
+                explicitHighlights.clear()
+                derivedHighlights.clear()
+                changes.clear()
+                return@forEach
+            }
+
+            if (currentVersion == null) return@forEach
+
+            if (line.startsWith("###")) {
+                val heading = line.removePrefix("###").trim().lowercase()
+                inHighlightsSection = heading.contains("highlight") || heading.contains("sorotan")
+                return@forEach
+            }
+
+            val boldLineMatch = BOLD_LINE_REGEX.matchEntire(line)
+            if (boldLineMatch != null && currentHeadline == null && changes.isEmpty() && explicitHighlights.isEmpty()) {
+                currentHeadline = cleanMarkdown(boldLineMatch.groupValues[1])
+                return@forEach
+            }
+
+            val bulletMatch = BULLET_REGEX.matchEntire(line)
+            if (bulletMatch != null) {
+                val rawBullet = bulletMatch.groupValues[1].trim()
+                val cleanedBullet = cleanMarkdown(rawBullet)
+                if (cleanedBullet.isBlank()) return@forEach
+
+                if (inHighlightsSection) {
+                    explicitHighlights += cleanedBullet
+                } else {
+                    changes += cleanedBullet
+                    val titleMatch = BULLET_BOLD_TITLE_REGEX.matchEntire(rawBullet)
+                    if (titleMatch != null) {
+                        val title = cleanMarkdown(titleMatch.groupValues[1])
+                        if (title.isNotBlank()) {
+                            derivedHighlights += title
+                        }
+                    }
+                }
+            }
+        }
+
+        flushCurrent()
+        return result
+    }
+
+    private fun cleanMarkdown(text: String): String {
+        var cleaned = text.trim()
+        cleaned = MARKDOWN_LINK_REGEX.replace(cleaned, "$1")
+        cleaned = MARKDOWN_BOLD_REGEX.replace(cleaned, "$1")
+        cleaned = MARKDOWN_ITALIC_REGEX.replace(cleaned, "$1")
+        cleaned = MARKDOWN_CODE_REGEX.replace(cleaned, "$1")
+        return cleaned.replace(Regex("""\s+"""), " ").trim()
+    }
+
+    private fun defaultFallbackRelease(): ChangelogRelease {
+        return ChangelogRelease(
+            version = BuildConfig.VERSION_NAME,
+            buildNumber = BuildConfig.VERSION_CODE,
+            date = "",
+            headline = "Eco Tobacco v${BuildConfig.VERSION_NAME}",
+            highlights = listOf("Pembaruan stabilitas dan peningkatan performa aplikasi."),
+            changes = listOf("Pembaruan stabilitas dan peningkatan performa aplikasi.")
+        )
+    }
 }

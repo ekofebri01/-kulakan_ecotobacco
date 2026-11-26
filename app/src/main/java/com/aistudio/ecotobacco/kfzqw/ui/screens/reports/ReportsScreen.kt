@@ -1,7 +1,9 @@
 package com.aistudio.ecotobacco.kfzqw.ui.screens.reports
 
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,6 +26,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
@@ -44,19 +48,23 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -64,9 +72,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.TransactionEntity
 import com.aistudio.ecotobacco.kfzqw.data.remote.SyncStatus
@@ -82,16 +93,21 @@ fun ReportsScreen(
     viewModel: TobaccoViewModel,
     onNavigateToTransaction: () -> Unit,
     onNavigateToSettings: () -> Unit,
-    initialFilterBy: String = "Semua"
+    initialFilterBy: String = "All Time"
 ) {
     val context = LocalContext.current
     val transactions by viewModel.transactions.collectAsStateWithLifecycle()
     val customUnits by viewModel.customUnits.collectAsStateWithLifecycle()
+    val defaultReportFilter by viewModel.defaultReportFilter.collectAsStateWithLifecycle()
     val syncStatus by viewModel.syncStatus.collectAsStateWithLifecycle()
     var showSyncDialog by remember { mutableStateOf(false) }
+    var showDefaultFilterDialog by remember { mutableStateOf(false) }
 
-    var filterBy by remember(initialFilterBy) { mutableStateOf(initialFilterBy) }
-    val filters = listOf("Semua", "Harian", "Mingguan", "Bulanan", "Tahunan")
+    var filterBy by remember { mutableStateOf(TobaccoViewModel.normalizeReportFilter(initialFilterBy)) }
+    LaunchedEffect(initialFilterBy) {
+        filterBy = TobaccoViewModel.normalizeReportFilter(initialFilterBy)
+    }
+    val filters = TobaccoViewModel.REPORT_FILTER_OPTIONS
     var transactionToEdit by remember { mutableStateOf<TransactionEntity?>(null) }
     var transactionOptionsTarget by remember { mutableStateOf<TransactionEntity?>(null) }
     var baseDate by remember { mutableLongStateOf(System.currentTimeMillis()) }
@@ -135,10 +151,16 @@ fun ReportsScreen(
             }
             else -> { start = 0L; end = Long.MAX_VALUE }
         }
-        transactions.filter { 
-            it.date in start until end && 
-            (selectedSupplier == "Semua Supplier" || it.supplier == selectedSupplier)
-        }
+        transactions
+            .filter {
+                it.date in start until end &&
+                    (selectedSupplier == "Semua Supplier" || it.supplier == selectedSupplier)
+            }
+            .sortedWith(
+                compareByDescending<TransactionEntity> { it.date }
+                    .thenByDescending { it.timestamp }
+                    .thenByDescending { it.id }
+            )
     }
 
     val supplierList = remember(transactions) {
@@ -170,7 +192,7 @@ fun ReportsScreen(
             }
             "Bulanan" -> SimpleDateFormat("MMMM yyyy", locale).format(cal.time)
             "Tahunan" -> cal.get(Calendar.YEAR).toString()
-            else -> "Semua Waktu"
+            else -> "All Time"
         }
     }
 
@@ -290,7 +312,7 @@ fun ReportsScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (filterBy != "Semua") {
+                        if (filterBy != "All Time") {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.weight(1f)
@@ -349,6 +371,7 @@ fun ReportsScreen(
                         Box {
                             OutlinedCard(
                                 onClick = { filterExpanded = true },
+                                modifier = Modifier.testTag("report_filter_dropdown"),
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
@@ -368,8 +391,33 @@ fun ReportsScreen(
                                 modifier = Modifier.background(MaterialTheme.colorScheme.surface)
                             ) {
                                 filters.forEach { f ->
+                                    val isDefaultItem = f == defaultReportFilter
                                     DropdownMenuItem(
-                                        text = { Text(f) },
+                                        text = {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = f,
+                                                    fontWeight = if (f == filterBy) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                                if (isDefaultItem) {
+                                                    Surface(
+                                                        shape = RoundedCornerShape(6.dp),
+                                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                                                    ) {
+                                                        Text(
+                                                            text = "Default",
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        },
                                         onClick = {
                                             filterBy = f
                                             filterExpanded = false
@@ -377,6 +425,103 @@ fun ReportsScreen(
                                         }
                                     )
                                 }
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Atur Tampilan Default...",
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.Bookmark,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    },
+                                    onClick = {
+                                        filterExpanded = false
+                                        showDefaultFilterDialog = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            onClick = { showDefaultFilterDialog = true },
+                            modifier = Modifier.testTag("default_report_filter_button"),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Bookmark,
+                                    contentDescription = "Tampilan Default",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Default: $defaultReportFilter",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (filterBy != defaultReportFilter) {
+                            TextButton(
+                                onClick = {
+                                    viewModel.setDefaultReportFilter(filterBy)
+                                    Toast.makeText(context, "Tampilan default diubah ke $filterBy", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier.testTag("set_default_report_filter_button"),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "Jadikan Default",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        } else {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "Tampilan Default",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
@@ -595,6 +740,10 @@ fun ReportsScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
+                    val cleanBulkUnit = bulkUnit.trim()
+                    if (cleanBulkUnit.isNotBlank()) {
+                        viewModel.addCustomUnit(cleanBulkUnit)
+                    }
                     transactions
                         .filter { selectedIds.contains(it.id) }
                         .forEach { transaction ->
@@ -605,7 +754,7 @@ fun ReportsScreen(
                                 transaction.quantity,
                                 transaction.unitPrice,
                                 bulkSupplier.trim(),
-                                bulkUnit.trim().ifBlank { transaction.unit }
+                                cleanBulkUnit.ifBlank { transaction.unit }
                             )
                         }
                     showBulkSupplierDialog = false
@@ -620,6 +769,73 @@ fun ReportsScreen(
                     Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+        )
+    }
+
+    if (showDefaultFilterDialog) {
+        AlertDialog(
+            onDismissRequest = { showDefaultFilterDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Bookmark,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            },
+            title = {
+                Text("Tampilan Default Rekap Kulakan", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "Pilih periode yang langsung ditampilkan saat membuka Rekap Kulakan:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                    filters.forEach { option ->
+                        val isSelected = option == defaultReportFilter
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.setDefaultReportFilter(option)
+                                    filterBy = option
+                                    baseDate = System.currentTimeMillis()
+                                    showDefaultFilterDialog = false
+                                    Toast.makeText(context, "Tampilan default: $option", Toast.LENGTH_SHORT).show()
+                                }
+                                .padding(horizontal = 8.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = isSelected,
+                                onClick = {
+                                    viewModel.setDefaultReportFilter(option)
+                                    filterBy = option
+                                    baseDate = System.currentTimeMillis()
+                                    showDefaultFilterDialog = false
+                                    Toast.makeText(context, "Tampilan default: $option", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = option,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDefaultFilterDialog = false }) {
+                    Text("Tutup")
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
         )
     }
 }

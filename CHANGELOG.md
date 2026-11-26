@@ -1,5 +1,19 @@
 # Changelog Eco Tobacco
 
+## v4.9 (Build 21) — 26 Nov 2026
+**Kustomisasi Tema Lengkap, Pengaturan Slide, Updater In-App Beranimasi, & Perbaikan Cloud Backup**
+
+### What's New
+- **Kustomisasi Tema Lengkap & Pratinjau Langsung**: Tersedia 7 preset tema pilihan, 5 mode tampilan (termasuk *Cyber* & *AMOLED*), pemilih warna RGB/Hex untuk warna aksen, latar belakang, dan teks, serta slider ukuran font, padding, tinggi tombol, radius sudut, dan sakelar latar *Matrix* di layar utama.
+- **Jendela Pengaturan Slide ke Kiri**: Layar Pengaturan kini muncul sebagai panel mengambang yang bergeser dari kanan ke kiri lengkap dengan pratinjau layar utama di balik layar dan gestur geser kanan untuk menutup.
+- **Perbaikan Logo Aplikasi & Layar Splash**: Ikon aplikasi adaptif dan logo layar splash diperbarui agar tampil bersih, proporsional, dan menyatu tanpa bingkai latar hijau.
+- **Unduh & Instalasi Update In-App Beranimasi**: Proses pembaruan aplikasi kini berjalan penuh di dalam aplikasi, mulai dari animasi unduh APK lengkap dengan persentase dan kecepatan unduh hingga pemasangan langsung beranimasi via *PackageInstaller*.
+- **Perbaikan Daftar & Hapus Backup Cloud**: Menghilangkan duplikasi entri pada pemilih backup cloud serta memperbaiki fungsi hapus per file dan hapus semua agar bersih di cloud maupun penyimpanan lokal.
+- **Rekap Kulakan Urut Terbaru & Filter Default**: Daftar riwayat kulakan kini otomatis mengurutkan tanggal terbaru di paling atas, ditambah pengaturan tampilan periode default (*Harian*, *Mingguan*, *Bulanan*, *Tahunan*, atau *All Time*).
+- **Simpan Satuan Baru di Edit Transaksi**: Satuan baru yang ditambahkan saat mengedit transaksi satuan maupun edit massal kini otomatis tersimpan ke daftar satuan dan basis data.
+
+---
+
 ## v4.8 (Build 20) — 26 Nov 2026
 **Penyelarasan Satuan Database, Tanggal Nota, Kamera Cepat, & Persistensi Login Cloud**
 

@@ -169,9 +169,6 @@ fun SettingsScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var showDisconnectDialog by remember { mutableStateOf(false) }
     var showWhatsNew by remember { mutableStateOf(false) }
-    var showThemeMenu by remember { mutableStateOf(false) }
-    var showColorPicker by remember { mutableStateOf(false) }
-    var showTextColorPicker by remember { mutableStateOf(false) }
     var showRestorePicker by remember { mutableStateOf(false) }
     var showEmailLoginDialog by remember { mutableStateOf(false) }
     var emailInput by remember { mutableStateOf("") }
@@ -408,84 +405,54 @@ fun SettingsScreen(
             }
 
             // --- SECTION 2: TAMPILAN, PERSONALISASI UI & WIDGET ---
-            val fontSizeScale by viewModel.fontSizeScale.collectAsState()
-            val paddingScale by viewModel.paddingScale.collectAsState()
-            val buttonHeight by viewModel.buttonHeight.collectAsState()
-            val cornerRadius by viewModel.cornerRadius.collectAsState()
-            val themeMode by viewModel.themeMode.collectAsState()
-
             PremiumSettingSection(title = "Tampilan, Personalisasi & Widget") {
                 PremiumCardGroup {
                     Column(
                         modifier = Modifier.padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text("Mode Tampilan", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            val modes = listOf(
-                                Triple("SYSTEM", "Otomatis", Icons.Default.SettingsSuggest),
-                                Triple("LIGHT", "Terang", Icons.Default.LightMode),
-                                Triple("DARK", "Gelap", Icons.Default.DarkMode),
-                                Triple("CYBER", "Cyber", Icons.Default.Bolt)
-                            )
-                            for ((modeKey, label, icon) in modes) {
-                                val isSelected = themeMode == modeKey
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable { viewModel.setThemeMode(modeKey) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-                                    border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(vertical = 8.dp, horizontal = 2.dp),
-                                        horizontalAlignment = Alignment.CenterHorizontally,
-                                        verticalArrangement = Arrangement.spacedBy(3.dp)
-                                    ) {
-                                        Icon(icon, label, tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
-                                        Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium, fontSize = 10.sp, color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface)
-                                    }
-                                }
-                            }
-                        }
+                        ThemeCustomizationStudio(viewModel = viewModel)
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
 
-                        UiSliderItem(
-                            label = "Ukuran Huruf / Font",
-                            value = fontSizeScale,
-                            displayValue = "${(fontSizeScale * 100).toInt()}%",
-                            icon = Icons.Default.TextFields,
-                            valueRange = 0.8f..1.3f,
-                            presets = listOf(0.9f to "Kecil", 1.0f to "Normal", 1.2f to "Besar"),
-                            onValueChange = { viewModel.setFontSizeScale(it) }
-                        )
-
-                        UiSliderItem(
-                            label = "Kebulatan Sudut (Corner Radius)",
-                            value = cornerRadius.toFloat(),
-                            displayValue = "${cornerRadius}dp",
-                            icon = Icons.Default.RoundedCorner,
-                            valueRange = 0f..28f,
-                            presets = listOf(4f to "Kotak", 14f to "Standar", 24f to "Bulat"),
-                            onValueChange = { viewModel.setCornerRadius(it.toInt()) }
-                        )
-
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            OutlinedButtonPremium(
-                                text = "Warna Teks",
-                                icon = Icons.Default.Palette,
-                                modifier = Modifier.weight(1f),
-                                onClick = { showTextColorPicker = true }
-                            )
-                            OutlinedButtonPremium(
-                                text = "Reset UI",
-                                icon = Icons.Default.RestartAlt,
-                                modifier = Modifier.weight(1f),
-                                onClick = { viewModel.resetUiCustomization(); Toast.makeText(context, "UI dikembalikan ke default", Toast.LENGTH_SHORT).show() }
-                            )
+                        val defaultReportFilter by viewModel.defaultReportFilter.collectAsState()
+                        val reportFilterOptions = TobaccoViewModel.REPORT_FILTER_OPTIONS
+                        Text("Tampilan Default Rekap Kulakan", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            reportFilterOptions.chunked(3).forEach { rowOptions ->
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    rowOptions.forEach { option ->
+                                        val isSelected = defaultReportFilter == option
+                                        Surface(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .clickable {
+                                                    viewModel.setDefaultReportFilter(option)
+                                                    Toast.makeText(context, "Tampilan default Rekap Kulakan: $option", Toast.LENGTH_SHORT).show()
+                                                },
+                                            shape = RoundedCornerShape(10.dp),
+                                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                            border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = option,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                    repeat(3 - rowOptions.size) {
+                                        Spacer(modifier = Modifier.weight(1f))
+                                    }
+                                }
+                            }
                         }
 
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
@@ -660,84 +627,6 @@ fun SettingsScreen(
     }
 
     // --- Dialogs ---
-    if (showThemeMenu) {
-        AlertDialog(
-            onDismissRequest = { showThemeMenu = false },
-            title = { Text("Select Theme", fontWeight = FontWeight.ExtraBold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    ThemeOptionItem("Light Mode", Icons.Default.LightMode, themeMode == "LIGHT") { viewModel.setThemeMode("LIGHT"); showThemeMenu = false }
-                    ThemeOptionItem("Dark Mode", Icons.Default.DarkMode, themeMode == "DARK") { viewModel.setThemeMode("DARK"); showThemeMenu = false }
-                    ThemeOptionItem("System Default", Icons.Default.SettingsSuggest, themeMode == "SYSTEM") { viewModel.setThemeMode("SYSTEM"); showThemeMenu = false }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showThemeMenu = false }) { Text("Close") } },
-            shape = RoundedCornerShape(28.dp)
-        )
-    }
-
-    if (showColorPicker) {
-        val colors = listOf("Emerald" to 0xFF10B981, "Blue" to 0xFF3B82F6, "Purple" to 0xFF8B5CF6, "Orange" to 0xFFF59E0B, "Rose" to 0xFFF43F5E, "Slate" to 0xFF475569)
-        val currentCustomColor by viewModel.customColor.collectAsState()
-        AlertDialog(
-            onDismissRequest = { showColorPicker = false },
-            title = { Text("Choose Accent Color", fontWeight = FontWeight.ExtraBold) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp.scaled)) {
-                    colors.chunked(3).forEach { rowColors ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            rowColors.forEach { (name, color) ->
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { viewModel.setCustomColor(color.toInt()); showColorPicker = false }) {
-                                    Surface(modifier = Modifier.size(50.dp.scaled), shape = CircleShape, color = Color(color), border = if (currentCustomColor == color.toInt()) BorderStroke(3.dp.scaled, MaterialTheme.colorScheme.onSurface) else null) {}
-                                    Text(name, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp.scaled)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showColorPicker = false }) { Text("Close", fontSize = 14.sp.scaled) } },
-            shape = RoundedCornerShape(28.dp.scaled)
-        )
-    }
-
-    if (showTextColorPicker) {
-        val colors = listOf(
-            "White" to 0xFFFFFFFF, "Gray" to 0xFFCCCCCC, "Amber" to 0xFFFFBF00, 
-            "Cyan" to 0xFF00FFFF, "Lime" to 0xFF00FF00, "Pink" to 0xFFFFC0CB,
-            "Default" to 0
-        )
-        val currentTextColor by viewModel.customTextColor.collectAsState()
-        AlertDialog(
-            onDismissRequest = { showTextColorPicker = false },
-            title = { Text("Pilih Warna Teks", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp.scaled) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp.scaled)) {
-                    colors.chunked(3).forEach { rowColors ->
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                            rowColors.forEach { (name, color) ->
-                                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.clickable { 
-                                    viewModel.setCustomTextColor(color.toInt())
-                                    showTextColorPicker = false 
-                                }) {
-                                    Surface(
-                                        modifier = Modifier.size(50.dp.scaled), 
-                                        shape = CircleShape, 
-                                        color = if (color.toLong() == 0L) MaterialTheme.colorScheme.onSurface else Color(color.toLong()), 
-                                        border = if (currentTextColor == color.toInt()) BorderStroke(3.dp.scaled, MaterialTheme.colorScheme.primary) else null
-                                    ) {}
-                                    Text(name, style = MaterialTheme.typography.labelSmall, fontSize = 10.sp.scaled)
-                                }
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { showTextColorPicker = false }) { Text("Tutup", fontSize = 14.sp.scaled) } },
-            shape = RoundedCornerShape(28.dp.scaled)
-        )
-    }
-
     if (showWhatsNew) {
         WhatsNewChangelogDialog(
             onDismiss = { showWhatsNew = false }
@@ -801,328 +690,7 @@ fun SettingsScreen(
         )
     }
 
-    // --- IN-APP UPDATE STATE DIALOGS ---
-    when (val state = updateState) {
-        is InAppUpdateState.Checking -> {
-            AlertDialog(
-                onDismissRequest = { /* Jangan dismiss saat mengecek */ },
-                title = { Text("Memeriksa Pembaruan...", fontWeight = FontWeight.Bold) },
-                text = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.padding(vertical = 8.dp)
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(36.dp), strokeWidth = 3.dp)
-                        Text("Menghubungi GitHub Releases API...")
-                    }
-                },
-                confirmButton = {},
-                shape = RoundedCornerShape(24.dp)
-            )
-        }
-        is InAppUpdateState.UpdateAvailable -> {
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissUpdateDialog() },
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Icon(Icons.Default.CloudDownload, null, tint = MaterialTheme.colorScheme.primary)
-                        Text("Pembaruan Tersedia!", fontWeight = FontWeight.ExtraBold)
-                    }
-                },
-                text = {
-                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text(
-                            text = "${state.release.tagName} • ${state.release.title}",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        if (state.release.apkSize > 0L) {
-                            Text(
-                                text = "Ukuran file: ${state.release.apkSize / (1024 * 1024)} MB",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Text(
-                            text = "Catatan Rilis:\n${state.release.releaseNotes}",
-                            style = MaterialTheme.typography.bodySmall,
-                            maxLines = 6
-                        )
-                        HorizontalDivider()
-                        if (state.release.hasDirectApk) {
-                            Text(
-                                text = "File akan diunduh langsung di dalam aplikasi dan otomatis dihapus setelah instalasi selesai.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        } else {
-                            Text(
-                                text = "Rilis ini belum melampirkan file .apk langsung. Anda dapat membukanya di browser.",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.error
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    if (state.release.hasDirectApk) {
-                        Button(onClick = { viewModel.downloadAndInstallUpdate(state.release) }) {
-                            Text("Unduh & Pasang Sekarang")
-                        }
-                    } else {
-                        Button(onClick = {
-                            val targetUrl = state.release.htmlUrl
-                            if (targetUrl.isNotBlank()) {
-                                try {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl)))
-                                } catch (e: Exception) {
-                                    Toast.makeText(context, "Tidak dapat membuka browser.", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                            viewModel.dismissUpdateDialog()
-                        }) {
-                            Text("Buka Halaman Rilis")
-                        }
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                        Text("Nanti Saja")
-                    }
-                },
-                shape = RoundedCornerShape(24.dp)
-            )
-        }
-        is InAppUpdateState.Downloading -> {
-            val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "downloadAnim")
-            val bounceY by infiniteTransition.animateFloat(
-                initialValue = -8f,
-                targetValue = 6f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                    animation = androidx.compose.animation.core.tween(750, easing = androidx.compose.animation.core.FastOutSlowInEasing),
-                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-                ),
-                label = "bounce"
-            )
-            val glowAlpha by infiniteTransition.animateFloat(
-                initialValue = 0.35f,
-                targetValue = 0.85f,
-                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
-                    animation = androidx.compose.animation.core.tween(900, easing = androidx.compose.animation.core.LinearEasing),
-                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
-                ),
-                label = "glow"
-            )
-            val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
-                targetValue = if (state.totalBytes > 0) (state.progressPercent / 100f).coerceIn(0f, 1f) else 0f,
-                animationSpec = androidx.compose.animation.core.tween(250),
-                label = "progress"
-            )
-            val mbDownloaded = state.bytesDownloaded / (1024f * 1024f)
-            val mbTotal = state.totalBytes / (1024f * 1024f)
-            val mbText = if (state.totalBytes > 0) String.format(Locale.US, "%.1f MB / %.1f MB", mbDownloaded, mbTotal) else String.format(Locale.US, "%.1f MB", mbDownloaded)
-
-            AlertDialog(
-                onDismissRequest = { /* Dipertahankan hingga selesai unduh */ },
-                title = null,
-                text = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        // Animated Hero Pulsing & Bouncing
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier.size(80.dp)
-                        ) {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = glowAlpha * 0.25f),
-                                modifier = Modifier.size(80.dp)
-                            ) {}
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                border = BorderStroke(2.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.6f)),
-                                modifier = Modifier.size(62.dp)
-                            ) {}
-                            Icon(
-                                imageVector = Icons.Default.CloudDownload,
-                                contentDescription = "Downloading",
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier
-                                    .size(34.dp)
-                                    .offset(y = bounceY.dp)
-                            )
-                        }
-
-                        // Title & Status
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                "Mengunduh Pembaruan...",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                "Proses unduh in-app berlangsung di dalam aplikasi",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        // Animated Progress Bar & Percent
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    CircularProgressIndicator(
-                                        modifier = Modifier.size(14.dp),
-                                        strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                    Text(
-                                        "${state.progressPercent}% Selesai",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                Text(
-                                    mbText,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-
-                            LinearProgressIndicator(
-                                progress = { animatedProgress },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(10.dp)
-                                    .clip(RoundedCornerShape(5.dp)),
-                                color = MaterialTheme.colorScheme.primary,
-                                trackColor = MaterialTheme.colorScheme.surfaceVariant
-                            )
-                        }
-
-                        // Auto-Cleanup Safety Banner (Pembersih Berkas Otomatis)
-                        Surface(
-                            shape = RoundedCornerShape(12.dp),
-                            color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.tertiary.copy(alpha = 0.3f)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.DeleteForever,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.tertiary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Column {
-                                    Text(
-                                        "Pembersihan Otomatis Aktif",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                                    )
-                                    Text(
-                                        "Berkas installer APK otomatis dihapus segera setelah aplikasi dipasang agar memori HP tetap lega.",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
-                                        lineHeight = 14.sp
-                                    )
-                                }
-                            }
-                        }
-                    }
-                },
-                confirmButton = {},
-                shape = RoundedCornerShape(24.dp)
-            )
-        }
-        is InAppUpdateState.ReadyToInstall -> {
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissUpdateDialog() },
-                title = { Text("Unduhan Selesai", fontWeight = FontWeight.Bold) },
-                text = {
-                    Text("Pembaruan ${state.release.tagName} telah siap dipasang. Setelah instalasi, file APK installer ini akan otomatis dibersihkan agar penyimpanan HP tidak penuh.")
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        if (viewModel.installDownloadedApk(state.apkFile)) {
-                            viewModel.dismissUpdateDialog()
-                        }
-                    }) {
-                        Text("Pasang Sekarang")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                        Text("Tutup")
-                    }
-                },
-                shape = RoundedCornerShape(24.dp)
-            )
-        }
-        is InAppUpdateState.UpToDate -> {
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissUpdateDialog() },
-                title = { Text("Aplikasi Terkini", fontWeight = FontWeight.Bold) },
-                text = {
-                    Text("Aplikasi Eco Tobacco v${Routes.APP_VERSION} sudah menggunakan versi terbaru dari GitHub.")
-                },
-                confirmButton = {
-                    Button(onClick = { viewModel.dismissUpdateDialog() }) {
-                        Text("OK")
-                    }
-                },
-                shape = RoundedCornerShape(24.dp)
-            )
-        }
-        is InAppUpdateState.Error -> {
-            AlertDialog(
-                onDismissRequest = { viewModel.dismissUpdateDialog() },
-                title = { Text("Info Pembaruan", fontWeight = FontWeight.Bold) },
-                text = { Text(state.message) },
-                confirmButton = {
-                    Button(onClick = {
-                        viewModel.checkForGitHubUpdate(currentVersion = Routes.APP_VERSION, silent = false)
-                    }) {
-                        Text("Coba Lagi")
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.dismissUpdateDialog() }) {
-                        Text("Tutup")
-                    }
-                },
-                shape = RoundedCornerShape(24.dp)
-            )
-        }
-        is InAppUpdateState.Idle -> { /* Idle */ }
-    }
+    // In-App Update dialogs are rendered globally via InAppUpdateHost in MainActivity.kt
 
     if (showResetDialog) {
         AlertDialog(
@@ -1254,6 +822,8 @@ fun DriveBackupPicker(
     val isFetchingBackups by viewModel.isFetchingBackups.collectAsState()
     var fileToDelete by remember { mutableStateOf<DriveBackupFile?>(null) }
     var fileToRestore by remember { mutableStateOf<DriveBackupFile?>(null) }
+    var showDeleteAllConfirm by remember { mutableStateOf(false) }
+    var isDeletingBackup by remember { mutableStateOf(false) }
     var isCreatingBackup by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -1262,26 +832,60 @@ fun DriveBackupPicker(
         viewModel.fetchDriveBackupFiles()
     }
 
+    if (showDeleteAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { if (!isDeletingBackup) showDeleteAllConfirm = false },
+            icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
+            title = { Text("Hapus Semua Backup?", fontWeight = FontWeight.ExtraBold) },
+            text = { Text("Semua ${files.size} daftar file cadangan di Cloud & penyimpanan lokal akan dihapus permanen. Data transaksi aktif di aplikasi saat ini tetap aman.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isDeletingBackup = true
+                        viewModel.deleteAllCloudBackups { success ->
+                            isDeletingBackup = false
+                            showDeleteAllConfirm = false
+                            Toast.makeText(
+                                context,
+                                if (success) "Semua file backup berhasil dibersihkan" else "Sebagian backup gagal dihapus",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    },
+                    enabled = !isDeletingBackup,
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text(if (isDeletingBackup) "Menghapus..." else "Ya, Hapus Semua", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAllConfirm = false }, enabled = !isDeletingBackup) {
+                    Text("Batal")
+                }
+            },
+            shape = RoundedCornerShape(24.dp)
+        )
+    }
+
     // Modal konfirmasi hapus file backup
     if (fileToDelete != null) {
         AlertDialog(
-            onDismissRequest = { fileToDelete = null },
+            onDismissRequest = { if (!isDeletingBackup) fileToDelete = null },
             icon = { Icon(Icons.Default.DeleteForever, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
             title = { Text("Hapus Backup Cloud", fontWeight = FontWeight.ExtraBold) },
-            text = { Text("Apakah Anda yakin ingin menghapus file backup '${fileToDelete!!.name}'? Tindakan ini akan menghapus cadangan dari Cloud Firestore secara permanen.") },
+            text = { Text("Apakah Anda yakin ingin menghapus file backup '${fileToDelete!!.name}'? Tindakan ini akan menghapus cadangan secara permanen.") },
             confirmButton = {
                 Button(
                     onClick = {
                         val file = fileToDelete!!
                         fileToDelete = null
                         viewModel.deleteDriveBackupFile(file) { success ->
-                            (context as? Activity)?.runOnUiThread {
-                                if (success) {
-                                    Toast.makeText(context, "Backup berhasil dihapus", Toast.LENGTH_SHORT).show()
-                                } else {
-                                    Toast.makeText(context, "Gagal menghapus backup", Toast.LENGTH_SHORT).show()
-                                }
-                            }
+                            Toast.makeText(
+                                context,
+                                if (success) "Backup berhasil dihapus" else "Gagal menghapus backup di server",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -1497,8 +1101,26 @@ fun DriveBackupPicker(
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (isFetchingBackups) {
-                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (files.size > 1) {
+                            TextButton(
+                                onClick = { showDeleteAllConfirm = true },
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    "Hapus Semua",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        }
+                        if (isFetchingBackups) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        }
                     }
                 }
 
@@ -1530,7 +1152,13 @@ fun DriveBackupPicker(
                         verticalArrangement = Arrangement.spacedBy(10.dp),
                         modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        items(files.size) { index ->
+                        items(
+                            count = files.size,
+                            key = { idx ->
+                                val f = files[idx]
+                                "${f.id}|${f.name}|${f.ownerUid}|$idx"
+                            }
+                        ) { index ->
                             val file = files[index]
                             PremiumBackupItem(
                                 file = file,
@@ -1627,13 +1255,13 @@ fun PremiumBackupItem(
             }
             IconButton(
                 onClick = onDelete,
-                modifier = Modifier.size(40.dp)
+                modifier = Modifier.size(48.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.Delete,
                     contentDescription = "Hapus Backup",
                     tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
         }

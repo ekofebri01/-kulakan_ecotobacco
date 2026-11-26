@@ -12,7 +12,9 @@ data class UiConfig(
     val paddingScale: Float = 1.0f,
     val buttonHeight: Int = 56,
     val cornerRadius: Int = 16,
-    val customTextColor: Int = 0
+    val customTextColor: Int = 0,
+    val customBackgroundColor: Int = 0,
+    val showMatrixBackground: Boolean = true
 )
 
 val LocalUiConfig = staticCompositionLocalOf { UiConfig() }

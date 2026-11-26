@@ -47,6 +47,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.DialogProperties
@@ -62,16 +63,30 @@ import java.util.Locale
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EditTransactionDialog(transaction: TransactionEntity, viewModel: TobaccoViewModel, onDismiss: () -> Unit, onConfirm: (Long, String, Double, Double, String, String) -> Unit) {
-    var dateMs by remember { mutableLongStateOf(transaction.date) }
-    var productName by remember { mutableStateOf(transaction.productName) }
-    var quantity by remember { mutableStateOf(transaction.quantity.toString()) }
-    var unitPrice by remember { mutableStateOf(transaction.unitPrice.toString().replace(".0", "")) }
-    var supplier by remember { mutableStateOf(transaction.supplier) }
-    
-    val unitOptions = listOf("kg", "ons", "pcs", "Custom")
-    var selectedUnit by remember { mutableStateOf(if (unitOptions.contains(transaction.unit)) transaction.unit else "Custom") }
-    var customUnit by remember { mutableStateOf(if (selectedUnit == "Custom") transaction.unit else "") }
-    var unitExpanded by remember { mutableStateOf(false) }
+    val savedUnits by viewModel.customUnits.collectAsStateWithLifecycle()
+    val baseUnits = remember(savedUnits, transaction.unit) {
+        (savedUnits + listOf("kg", "ons", "pcs"))
+            .map { it.trim() }
+            .filter { it.isNotBlank() && !it.equals("Custom", ignoreCase = true) && !it.equals("unit", ignoreCase = true) }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .sortedBy { it.lowercase(Locale.ROOT) }
+    }
+    val unitOptions = remember(baseUnits) { baseUnits + "Custom" }
+
+    var dateMs by remember(transaction.id) { mutableLongStateOf(transaction.date) }
+    var productName by remember(transaction.id) { mutableStateOf(transaction.productName) }
+    var quantity by remember(transaction.id) { mutableStateOf(transaction.quantity.toString()) }
+    var unitPrice by remember(transaction.id) { mutableStateOf(transaction.unitPrice.toString().replace(".0", "")) }
+    var supplier by remember(transaction.id) { mutableStateOf(transaction.supplier) }
+
+    val initialMatchedUnit = remember(transaction.id) {
+        baseUnits.firstOrNull { it.equals(transaction.unit.trim(), ignoreCase = true) }
+    }
+    var selectedUnit by remember(transaction.id) { mutableStateOf(initialMatchedUnit ?: "Custom") }
+    var customUnit by remember(transaction.id) {
+        mutableStateOf(if (initialMatchedUnit == null) transaction.unit.trim() else "")
+    }
+    var unitExpanded by remember(transaction.id) { mutableStateOf(false) }
 
     val context = LocalContext.current
     AlertDialog(
@@ -115,8 +130,9 @@ fun EditTransactionDialog(transaction: TransactionEntity, viewModel: TobaccoView
                             readOnly = true,
                             label = { Text("Satuan") },
                             modifier = Modifier
-                                .fillMaxWidth() // Opsional: biar rapi
-                                .menuAnchor(),
+                                .fillMaxWidth()
+                                .menuAnchor()
+                                .testTag("edit_transaction_unit_dropdown"),
                             shape = RoundedCornerShape(12.dp),
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded) },
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
@@ -128,7 +144,13 @@ fun EditTransactionDialog(transaction: TransactionEntity, viewModel: TobaccoView
                         ) {
                             unitOptions.forEach { option ->
                                 DropdownMenuItem(
-                                    text = { Text(option) },
+                                    text = {
+                                        Text(
+                                            text = if (option == "Custom") "Custom (Satuan Baru)" else option,
+                                            fontWeight = if (option == "Custom") FontWeight.Bold else FontWeight.Normal,
+                                            color = if (option == "Custom") MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    },
                                     onClick = {
                                         selectedUnit = option
                                         unitExpanded = false
@@ -143,12 +165,22 @@ fun EditTransactionDialog(transaction: TransactionEntity, viewModel: TobaccoView
                             value = customUnit,
                             onValueChange = { customUnit = it },
                             label = { Text("Unit Baru") },
-                            modifier = Modifier.weight(1f),
+                            placeholder = { Text("bal, slop, pak") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("edit_transaction_custom_unit_input"),
                             shape = RoundedCornerShape(12.dp),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
                         )
                     }
+                }
+                if (selectedUnit == "Custom") {
+                    Text(
+                        text = "Satuan baru otomatis tersimpan ke daftar satuan",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
 
                 Row(
@@ -168,7 +200,9 @@ fun EditTransactionDialog(transaction: TransactionEntity, viewModel: TobaccoView
             ) {
                 TextButton(
                     onClick = onDismiss,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("edit_transaction_cancel_button")
                 ) {
                     Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -176,10 +210,18 @@ fun EditTransactionDialog(transaction: TransactionEntity, viewModel: TobaccoView
                     onClick = {
                         val q = viewModel.parsePrice(quantity)
                         val p = viewModel.parsePrice(unitPrice)
-                        val finalUnit = if (selectedUnit == "Custom") customUnit.ifBlank { "unit" } else selectedUnit
-                        onConfirm(dateMs, productName, q, p, supplier, finalUnit)
+                        val finalUnit = if (selectedUnit == "Custom") {
+                            customUnit.trim().ifBlank { transaction.unit.trim().ifBlank { "kg" } }
+                        } else {
+                            selectedUnit.trim().ifBlank { "kg" }
+                        }
+                        viewModel.addCustomUnit(finalUnit)
+                        onConfirm(dateMs, productName.trim(), q, p, supplier.trim(), finalUnit)
                     },
-                    modifier = Modifier.height(44.dp).weight(1.2f),
+                    modifier = Modifier
+                        .height(44.dp)
+                        .weight(1.2f)
+                        .testTag("edit_transaction_save_button"),
                     contentPadding = PaddingValues(horizontal = 12.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)

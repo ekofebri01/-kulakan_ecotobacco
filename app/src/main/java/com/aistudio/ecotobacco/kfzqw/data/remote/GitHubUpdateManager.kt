@@ -1,13 +1,20 @@
 package com.aistudio.ecotobacco.kfzqw.data.remote
 
+import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.StrictMode
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.aistudio.ecotobacco.kfzqw.utils.AppLogger
 import kotlinx.coroutines.Dispatchers
@@ -19,8 +26,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
-import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 data class GitHubReleaseInfo(
@@ -41,24 +48,45 @@ sealed class InAppUpdateState {
     object Checking : InAppUpdateState()
     data class UpdateAvailable(val release: GitHubReleaseInfo) : InAppUpdateState()
     object UpToDate : InAppUpdateState()
-    data class Downloading(val progressPercent: Int, val bytesDownloaded: Long, val totalBytes: Long) : InAppUpdateState()
+    data class Downloading(
+        val progressPercent: Int,
+        val bytesDownloaded: Long,
+        val totalBytes: Long,
+        val speedBytesPerSec: Long = 0L,
+        val release: GitHubReleaseInfo? = null
+    ) : InAppUpdateState()
     data class ReadyToInstall(val apkFile: File, val release: GitHubReleaseInfo) : InAppUpdateState()
-    data class Error(val message: String) : InAppUpdateState()
+    data class PermissionRequired(val apkFile: File, val release: GitHubReleaseInfo) : InAppUpdateState()
+    data class Installing(
+        val progressPercent: Int,
+        val stageText: String,
+        val release: GitHubReleaseInfo,
+        val awaitingUserConfirm: Boolean = false
+    ) : InAppUpdateState()
+    data class InstallSuccess(val release: GitHubReleaseInfo) : InAppUpdateState()
+    data class Error(
+        val message: String,
+        val pendingApkFile: File? = null,
+        val release: GitHubReleaseInfo? = null
+    ) : InAppUpdateState()
 }
 
 /**
  * GitHubUpdateManager
- * Mengelola pengecekan update otomatis dari GitHub Releases, in-app download,
- * instalasi paket, dan pembersihan otomatis file APK installer agar memori HP tidak penuh.
+ * Mengelola pengecekan update otomatis dari GitHub Releases, in-app download dengan persentase,
+ * instalasi paket in-app via PackageInstaller dengan progres real-time,
+ * dan pembersihan otomatis file APK installer agar memori HP tidak penuh.
  */
 class GitHubUpdateManager(private val context: Context) {
+
+    private val appContext = context.applicationContext
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    private val prefs = context.getSharedPreferences("app_update_prefs", Context.MODE_PRIVATE)
+    private val prefs = appContext.getSharedPreferences("app_update_prefs", Context.MODE_PRIVATE)
 
     private val _updateState = MutableStateFlow<InAppUpdateState>(InAppUpdateState.Idle)
     val updateState: StateFlow<InAppUpdateState> = _updateState.asStateFlow()
@@ -73,6 +101,97 @@ class GitHubUpdateManager(private val context: Context) {
     )
     val autoCheckEnabled: StateFlow<Boolean> = _autoCheckEnabled.asStateFlow()
 
+    private var activeInstallSessionId: Int = -1
+    private var activeInstallRelease: GitHubReleaseInfo? = null
+    private var activeInstallApkFile: File? = null
+    private var installReceiverRegistered = false
+    private var activeSessionCallback: PackageInstaller.SessionCallback? = null
+
+    private val actionInstallStatus = "${appContext.packageName}.ACTION_IN_APP_INSTALL_STATUS"
+
+    private val installStatusReceiver = object : BroadcastReceiver() {
+        override fun onReceive(ctx: Context?, intent: Intent?) {
+            if (intent == null || intent.action != actionInstallStatus) return
+            val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE)
+            val statusMessage = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)
+            val release = activeInstallRelease ?: GitHubReleaseInfo(
+                tagName = "",
+                versionName = "",
+                title = "Pembaruan",
+                releaseNotes = "",
+                publishedAt = "",
+                downloadUrl = "",
+                apkFileName = "",
+                apkSize = 0L,
+                htmlUrl = ""
+            )
+
+            when (status) {
+                PackageInstaller.STATUS_PENDING_USER_ACTION -> {
+                    val confirmIntent: Intent? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        intent.getParcelableExtra(Intent.EXTRA_INTENT, Intent::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        intent.getParcelableExtra(Intent.EXTRA_INTENT)
+                    }
+                    _updateState.value = InAppUpdateState.Installing(
+                        progressPercent = 72,
+                        stageText = "Menunggu konfirmasi pemasangan...",
+                        release = release,
+                        awaitingUserConfirm = true
+                    )
+                    if (confirmIntent != null) {
+                        try {
+                            confirmIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            appContext.startActivity(confirmIntent)
+                        } catch (e: Exception) {
+                            Log.e("GitHubUpdateManager", "Gagal membuka konfirmasi install", e)
+                            cleanupInstallWatchers()
+                            _updateState.value = InAppUpdateState.Error(
+                                message = "Tidak dapat membuka dialog konfirmasi pemasangan: ${e.localizedMessage}",
+                                pendingApkFile = activeInstallApkFile,
+                                release = release
+                            )
+                        }
+                    }
+                }
+
+                PackageInstaller.STATUS_SUCCESS -> {
+                    cleanupInstallWatchers()
+                    cleanupOldOrPendingApkFiles(appContext)
+                    _updateState.value = InAppUpdateState.InstallSuccess(release)
+                }
+
+                PackageInstaller.STATUS_FAILURE_ABORTED -> {
+                    val apk = activeInstallApkFile
+                    cleanupInstallWatchers()
+                    _updateState.value = InAppUpdateState.Error(
+                        message = "Pemasangan dibatalkan. Anda dapat mencoba pasang lagi tanpa mengunduh ulang.",
+                        pendingApkFile = apk,
+                        release = release
+                    )
+                }
+
+                else -> {
+                    val apk = activeInstallApkFile
+                    cleanupInstallWatchers()
+                    val readableError = when (status) {
+                        PackageInstaller.STATUS_FAILURE_CONFLICT -> "Konflik paket atau tanda tangan aplikasi berbeda."
+                        PackageInstaller.STATUS_FAILURE_INCOMPATIBLE -> "Versi APK tidak kompatibel dengan perangkat ini."
+                        PackageInstaller.STATUS_FAILURE_INVALID -> "File APK tidak valid atau korup."
+                        PackageInstaller.STATUS_FAILURE_STORAGE -> "Ruang penyimpanan HP penuh."
+                        else -> statusMessage?.takeIf { it.isNotBlank() } ?: "Gagal memasang pembaruan (kode $status)."
+                    }
+                    _updateState.value = InAppUpdateState.Error(
+                        message = readableError,
+                        pendingApkFile = apk,
+                        release = release
+                    )
+                }
+            }
+        }
+    }
+
     companion object {
         const val DEFAULT_REPO = "ekofebriarianto/eco-tobacco"
         const val PREF_GITHUB_REPO = "github_repo_target"
@@ -85,7 +204,6 @@ class GitHubUpdateManager(private val context: Context) {
          */
         fun cleanupOldOrPendingApkFiles(context: Context) {
             try {
-                // 1. Bersihkan file dari path yang tercatat
                 val prefs = context.getSharedPreferences("app_update_prefs", Context.MODE_PRIVATE)
                 val pendingPath = prefs.getString(PREF_PENDING_APK_PATH, null)
                 if (!pendingPath.isNullOrEmpty()) {
@@ -99,7 +217,6 @@ class GitHubUpdateManager(private val context: Context) {
                     prefs.edit().remove(PREF_PENDING_APK_PATH).apply()
                 }
 
-                // 2. Scan direktori updates di cache internal
                 val updateDir = File(context.cacheDir, "updates")
                 if (updateDir.exists() && updateDir.isDirectory) {
                     updateDir.listFiles()?.forEach { file ->
@@ -112,7 +229,6 @@ class GitHubUpdateManager(private val context: Context) {
                     }
                 }
 
-                // 3. Scan external cache jika ada
                 context.externalCacheDir?.let { extCache ->
                     val extUpdateDir = File(extCache, "updates")
                     if (extUpdateDir.exists() && extUpdateDir.isDirectory) {
@@ -129,9 +245,7 @@ class GitHubUpdateManager(private val context: Context) {
         }
     }
 
-    fun getTargetRepository(): String {
-        return _targetRepo.value
-    }
+    fun getTargetRepository(): String = _targetRepo.value
 
     fun setTargetRepository(repo: String) {
         val sanitized = repo.trim()
@@ -144,24 +258,64 @@ class GitHubUpdateManager(private val context: Context) {
         _targetRepo.value = sanitized
     }
 
-    fun isAutoCheckEnabled(): Boolean {
-        return _autoCheckEnabled.value
-    }
+    fun isAutoCheckEnabled(): Boolean = _autoCheckEnabled.value
 
     fun setAutoCheckEnabled(enabled: Boolean) {
         prefs.edit().putBoolean(PREF_AUTO_CHECK_ENABLED, enabled).apply()
         _autoCheckEnabled.value = enabled
     }
 
+    fun canInstallUnknownApps(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            appContext.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+
+    fun openInstallPermissionSettings() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val permissionIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                data = Uri.parse("package:${appContext.packageName}")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            appContext.startActivity(permissionIntent)
+        }
+    }
+
     fun resetState() {
+        cleanupInstallWatchers()
         _updateState.value = InAppUpdateState.Idle
+    }
+
+    private fun cleanupInstallWatchers() {
+        try {
+            activeSessionCallback?.let { cb ->
+                appContext.packageManager.packageInstaller.unregisterSessionCallback(cb)
+            }
+        } catch (e: Exception) {
+            Log.w("GitHubUpdateManager", "Unregister callback notice: ${e.message}")
+        }
+        activeSessionCallback = null
+        if (installReceiverRegistered) {
+            try {
+                appContext.unregisterReceiver(installStatusReceiver)
+            } catch (e: Exception) {
+                Log.w("GitHubUpdateManager", "Unregister receiver notice: ${e.message}")
+            }
+            installReceiverRegistered = false
+        }
+        activeInstallSessionId = -1
     }
 
     /**
      * Memeriksa rilis terbaru dari GitHub API
      */
     suspend fun checkForUpdates(currentVersion: String, silent: Boolean = false): GitHubReleaseInfo? {
-        if (_updateState.value is InAppUpdateState.Checking || _updateState.value is InAppUpdateState.Downloading) {
+        if (_updateState.value is InAppUpdateState.Checking ||
+            _updateState.value is InAppUpdateState.Downloading ||
+            _updateState.value is InAppUpdateState.Installing
+        ) {
             return null
         }
 
@@ -211,7 +365,6 @@ class GitHubUpdateManager(private val context: Context) {
                     val publishedAt = json.optString("published_at", "")
                     val htmlUrl = json.optString("html_url", "")
 
-                    // Cari asset APK di release
                     var downloadUrl = ""
                     var apkFileName = "eco-tobacco-v$cleanTagName.apk"
                     var apkSize = 0L
@@ -268,7 +421,7 @@ class GitHubUpdateManager(private val context: Context) {
     }
 
     /**
-     * Download file APK langsung di dalam aplikasi dengan progress bar
+     * Download file APK langsung di dalam aplikasi dengan progress bar, persentase, dan kecepatan unduh.
      */
     suspend fun downloadUpdateInApp(release: GitHubReleaseInfo): File? {
         if (!release.hasDirectApk || release.downloadUrl.isBlank()) {
@@ -281,12 +434,17 @@ class GitHubUpdateManager(private val context: Context) {
         return withContext(Dispatchers.IO) {
             var targetFile: File? = null
             try {
-                _updateState.value = InAppUpdateState.Downloading(0, 0L, release.apkSize)
+                _updateState.value = InAppUpdateState.Downloading(
+                    progressPercent = 0,
+                    bytesDownloaded = 0L,
+                    totalBytes = release.apkSize,
+                    speedBytesPerSec = 0L,
+                    release = release
+                )
 
-                // Hapus file lama terlebih dahulu agar tidak menumpuk
-                cleanupOldOrPendingApkFiles(context)
+                cleanupOldOrPendingApkFiles(appContext)
 
-                val updateDir = File(context.cacheDir, "updates")
+                val updateDir = File(appContext.cacheDir, "updates")
                 if (!updateDir.exists()) {
                     updateDir.mkdirs()
                 }
@@ -305,35 +463,52 @@ class GitHubUpdateManager(private val context: Context) {
                 client.newCall(request).execute().use { response ->
                     val body = response.body
                     if (!response.isSuccessful || body == null) {
-                        _updateState.value = InAppUpdateState.Error("Gagal mengunduh APK (HTTP ${response.code})")
+                        _updateState.value = InAppUpdateState.Error("Gagal mengunduh APK (HTTP ${response.code})", release = release)
                         return@withContext null
                     }
 
                     val contentType = body.contentType()?.toString().orEmpty()
                     if (contentType.contains("text/html", ignoreCase = true)) {
                         _updateState.value = InAppUpdateState.Error(
-                            "URL unduhan mengembalikan halaman HTML, bukan file APK."
+                            "URL unduhan mengembalikan halaman HTML, bukan file APK.",
+                            release = release
                         )
                         return@withContext null
                     }
 
                     val totalBytes = if (body.contentLength() > 0) body.contentLength() else release.apkSize
                     var downloadedBytes = 0L
+                    var lastEmitTime = System.currentTimeMillis()
+                    var lastEmitBytes = 0L
+                    var currentSpeed = 0L
 
                     body.byteStream().use { inputStream ->
                         FileOutputStream(targetFile).use { outputStream ->
-                            val buffer = ByteArray(8192)
+                            val buffer = ByteArray(16384)
                             var bytesRead: Int
-                            var lastPercent = 0
+                            var lastPercent = -1
 
                             while (inputStream.read(buffer).also { bytesRead = it } != -1) {
                                 outputStream.write(buffer, 0, bytesRead)
                                 downloadedBytes += bytesRead
 
-                                val percent = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).toInt() else 0
-                                if (percent != lastPercent) {
+                                val now = System.currentTimeMillis()
+                                val elapsed = now - lastEmitTime
+                                val percent = if (totalBytes > 0) ((downloadedBytes * 100) / totalBytes).toInt().coerceIn(0, 100) else 0
+                                if (percent != lastPercent || elapsed >= 300L) {
+                                    if (elapsed >= 300L) {
+                                        currentSpeed = ((downloadedBytes - lastEmitBytes) * 1000L) / elapsed.coerceAtLeast(1L)
+                                        lastEmitTime = now
+                                        lastEmitBytes = downloadedBytes
+                                    }
                                     lastPercent = percent
-                                    _updateState.value = InAppUpdateState.Downloading(percent, downloadedBytes, totalBytes)
+                                    _updateState.value = InAppUpdateState.Downloading(
+                                        progressPercent = percent,
+                                        bytesDownloaded = downloadedBytes,
+                                        totalBytes = totalBytes,
+                                        speedBytesPerSec = currentSpeed,
+                                        release = release
+                                    )
                                 }
                             }
                             outputStream.flush()
@@ -342,83 +517,215 @@ class GitHubUpdateManager(private val context: Context) {
 
                     if (!targetFile.exists() || targetFile.length() == 0L) {
                         targetFile.delete()
-                        _updateState.value = InAppUpdateState.Error("File APK hasil unduhan kosong atau gagal disimpan.")
+                        _updateState.value = InAppUpdateState.Error("File APK hasil unduhan kosong atau gagal disimpan.", release = release)
                         return@withContext null
                     }
 
-                    // Simpan path untuk auto-delete saat aplikasi dibuka berikutnya
                     prefs.edit().putString(PREF_PENDING_APK_PATH, targetFile.absolutePath).apply()
-
+                    _updateState.value = InAppUpdateState.Downloading(
+                        progressPercent = 100,
+                        bytesDownloaded = targetFile.length(),
+                        totalBytes = totalBytes.coerceAtLeast(targetFile.length()),
+                        speedBytesPerSec = currentSpeed,
+                        release = release
+                    )
                     _updateState.value = InAppUpdateState.ReadyToInstall(targetFile, release)
                     return@withContext targetFile
                 }
             } catch (e: Exception) {
                 Log.e("GitHubUpdateManager", "Error downloading APK update", e)
                 targetFile?.let { if (it.exists()) it.delete() }
-                _updateState.value = InAppUpdateState.Error("Gagal mengunduh file update: ${e.localizedMessage ?: "Terjadi kesalahan"}")
+                _updateState.value = InAppUpdateState.Error(
+                    "Gagal mengunduh file update: ${e.localizedMessage ?: "Terjadi kesalahan"}",
+                    release = release
+                )
                 return@withContext null
             }
         }
     }
 
     /**
-     * Memulai proses instalasi APK pada sistem Android.
-     * Menggunakan FileProvider dengan fallback aman ke StrictMode VM policy.
-     * @return true jika intent installer berhasil dibuka, false jika menunggu izin atau gagal.
+     * Memulai proses instalasi APK langsung secara IN-APP menggunakan Android PackageInstaller Session
+     * dengan animasi dan progres persentase instalasi.
+     */
+    suspend fun installApkInApp(apkFile: File, release: GitHubReleaseInfo) {
+        if (!apkFile.exists() || apkFile.length() == 0L) {
+            _updateState.value = InAppUpdateState.Error("File instalasi tidak ditemukan atau rusak.", release = release)
+            return
+        }
+
+        if (!canInstallUnknownApps()) {
+            _updateState.value = InAppUpdateState.PermissionRequired(apkFile, release)
+            return
+        }
+
+        withContext(Dispatchers.IO) {
+            var session: PackageInstaller.Session? = null
+            try {
+                cleanupInstallWatchers()
+                activeInstallApkFile = apkFile
+                activeInstallRelease = release
+
+                _updateState.value = InAppUpdateState.Installing(
+                    progressPercent = 5,
+                    stageText = "Menyiapkan sesi instalasi in-app...",
+                    release = release,
+                    awaitingUserConfirm = false
+                )
+
+                val packageInstaller = appContext.packageManager.packageInstaller
+                val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL).apply {
+                    setSize(apkFile.length())
+                    setAppLabel("Eco Tobacco")
+                }
+
+                val sessionId = packageInstaller.createSession(params)
+                activeInstallSessionId = sessionId
+
+                // Register broadcast receiver for final status / system prompt
+                if (!installReceiverRegistered) {
+                    ContextCompat.registerReceiver(
+                        appContext,
+                        installStatusReceiver,
+                        IntentFilter(actionInstallStatus),
+                        ContextCompat.RECEIVER_NOT_EXPORTED
+                    )
+                    installReceiverRegistered = true
+                }
+
+                // Register session callback for live PackageInstaller progress
+                val callback = object : PackageInstaller.SessionCallback() {
+                    override fun onCreated(id: Int) {}
+                    override fun onBadgingChanged(id: Int) {}
+                    override fun onActiveChanged(id: Int, active: Boolean) {}
+                    override fun onProgressChanged(id: Int, progress: Float) {
+                        if (id == activeInstallSessionId) {
+                            val current = _updateState.value
+                            val mappedPercent = (65 + (progress.coerceIn(0f, 1f) * 32f)).toInt().coerceIn(65, 97)
+                            val awaiting = (current as? InAppUpdateState.Installing)?.awaitingUserConfirm ?: false
+                            _updateState.value = InAppUpdateState.Installing(
+                                progressPercent = mappedPercent,
+                                stageText = if (mappedPercent >= 88) "Memasang pembaruan aplikasi..." else "Memverifikasi paket APK...",
+                                release = release,
+                                awaitingUserConfirm = awaiting
+                            )
+                        }
+                    }
+
+                    override fun onFinished(id: Int, success: Boolean) {
+                        if (id == activeInstallSessionId && success) {
+                            _updateState.value = InAppUpdateState.Installing(
+                                progressPercent = 100,
+                                stageText = "Pemasangan selesai!",
+                                release = release,
+                                awaitingUserConfirm = false
+                            )
+                        }
+                    }
+                }
+                activeSessionCallback = callback
+                packageInstaller.registerSessionCallback(callback, Handler(Looper.getMainLooper()))
+
+                session = packageInstaller.openSession(sessionId)
+                val totalLength = apkFile.length().coerceAtLeast(1L)
+                var writtenBytes = 0L
+                var lastPct = 5
+
+                FileInputStream(apkFile).use { input ->
+                    session.openWrite("app_update.apk", 0, totalLength).use { output ->
+                        val buffer = ByteArray(32768)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                            writtenBytes += read
+                            val pct = (10 + ((writtenBytes * 50) / totalLength)).toInt().coerceIn(10, 60)
+                            if (pct != lastPct) {
+                                lastPct = pct
+                                _updateState.value = InAppUpdateState.Installing(
+                                    progressPercent = pct,
+                                    stageText = "Memuat berkas ke installer ($pct%)...",
+                                    release = release,
+                                    awaitingUserConfirm = false
+                                )
+                            }
+                        }
+                        session.fsync(output)
+                    }
+                }
+
+                _updateState.value = InAppUpdateState.Installing(
+                    progressPercent = 65,
+                    stageText = "Memverifikasi paket & memulai instalasi...",
+                    release = release,
+                    awaitingUserConfirm = false
+                )
+
+                val statusIntent = Intent(actionInstallStatus).apply {
+                    setPackage(appContext.packageName)
+                }
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+                } else {
+                    PendingIntent.FLAG_UPDATE_CURRENT
+                }
+                val pendingIntent = PendingIntent.getBroadcast(appContext, sessionId, statusIntent, flags)
+                session.commit(pendingIntent.intentSender)
+            } catch (e: Exception) {
+                Log.e("GitHubUpdateManager", "In-app PackageInstaller gagal", e)
+                try {
+                    session?.abandon()
+                } catch (_: Exception) {
+                }
+                cleanupInstallWatchers()
+                _updateState.value = InAppUpdateState.Error(
+                    message = "Gagal memproses instalasi in-app: ${e.localizedMessage ?: "Terjadi kesalahan"}",
+                    pendingApkFile = apkFile,
+                    release = release
+                )
+            }
+        }
+    }
+
+    /**
+     * Fallback menggunakan system ACTION_VIEW installer jika diperlukan.
      */
     fun installApk(apkFile: File): Boolean {
         try {
             if (!apkFile.exists() || apkFile.length() == 0L) {
-                Toast.makeText(context, "File instalasi tidak ditemukan atau rusak.", Toast.LENGTH_SHORT).show()
+                Toast.makeText(appContext, "File instalasi tidak ditemukan atau rusak.", Toast.LENGTH_SHORT).show()
                 return false
             }
 
-            // Periksa izin instalasi pihak ketiga pada Android 8.0+
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                if (!context.packageManager.canRequestPackageInstalls()) {
-                    Toast.makeText(context, "Mohon izinkan pemasangan aplikasi dari sumber ini, lalu ketuk Pasang Sekarang lagi.", Toast.LENGTH_LONG).show()
-                    val permissionIntent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                    }
-                    context.startActivity(permissionIntent)
-                    return false
-                }
+            if (!canInstallUnknownApps()) {
+                Toast.makeText(appContext, "Mohon izinkan pemasangan aplikasi dari sumber ini.", Toast.LENGTH_LONG).show()
+                openInstallPermissionSettings()
+                return false
             }
 
-            // Buat Intent instalasi APK
             val installIntent = Intent(Intent.ACTION_VIEW).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
             }
 
             try {
-                // Coba gunakan FileProvider resmi
-                val apkUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", apkFile)
+                val apkUri = FileProvider.getUriForFile(appContext, "${appContext.packageName}.fileprovider", apkFile)
                 installIntent.setDataAndType(apkUri, "application/vnd.android.package-archive")
             } catch (e: Exception) {
-                // Fallback jika FileProvider belum terdaftar di manifest container
                 Log.w("GitHubUpdateManager", "FileProvider fallback: ${e.message}")
                 val builder = StrictMode.VmPolicy.Builder()
                 StrictMode.setVmPolicy(builder.build())
                 installIntent.setDataAndType(Uri.fromFile(apkFile), "application/vnd.android.package-archive")
             }
 
-            context.startActivity(installIntent)
-
-            // Jadwalkan auto-delete file installer setelah user menginstal
+            appContext.startActivity(installIntent)
             AppLogger.d("Install intent diluncurkan. File '${apkFile.name}' siap dihapus otomatis setelah instalasi.")
             return true
         } catch (e: Exception) {
             Log.e("GitHubUpdateManager", "Gagal meluncurkan installer APK", e)
-            Toast.makeText(context, "Gagal membuka installer APK: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            Toast.makeText(appContext, "Gagal membuka installer APK: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             return false
         }
     }
 
-    /**
-     * Logika pembanding versi semantik sederhana:
-     * Contoh: "4.4" > "4.3" -> true, "4.3.1" > "4.3" -> true
-     */
     private fun isVersionNewer(newVerStr: String, currentVerStr: String): Boolean {
         try {
             val newParts = newVerStr.replace(Regex("[^0-9.]"), "").split(".").map { it.toIntOrNull() ?: 0 }

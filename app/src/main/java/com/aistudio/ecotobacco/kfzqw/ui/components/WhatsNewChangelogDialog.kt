@@ -63,8 +63,9 @@ fun WhatsNewChangelogDialog(
                     shape = RoundedCornerShape(100.dp),
                     color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                 ) {
+                    val dateSuffix = if (latestRelease.date.isNotBlank()) " • ${latestRelease.date}" else ""
                     Text(
-                        text = "Eco Tobacco v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE}) • ${latestRelease.date}",
+                        text = "Eco Tobacco v${BuildConfig.VERSION_NAME} (Build ${BuildConfig.VERSION_CODE})$dateSuffix",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
@@ -153,7 +154,11 @@ fun WhatsNewChangelogDialog(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "v${release.version} (Build ${release.buildNumber})",
+                                text = if (release.buildNumber > 0) {
+                                    "v${release.version} (Build ${release.buildNumber})"
+                                } else {
+                                    "v${release.version}"
+                                },
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface

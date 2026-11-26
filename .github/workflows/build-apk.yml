@@ -16,12 +16,18 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
+
+      - name: Auto-Update Changelog & Release Notes
+        id: changelog
+        run: python3 .github/scripts/auto_changelog.py
 
       - name: Verify Android SDK & Build-Tools 34.0.0
         run: |
@@ -79,10 +85,16 @@ jobs:
             VERSION_NAME="latest"
           fi
           APK_NAME="EcoTobacco-v${VERSION_NAME}.apk"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            RELEASE_TAG="${GITHUB_REF#refs/tags/}"
+          else
+            RELEASE_TAG="v${VERSION_NAME}"
+          fi
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
-          echo "Resolved Version: v$VERSION_NAME (Build $VERSION_CODE) -> $APK_NAME"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+          echo "Resolved Version: v$VERSION_NAME (Build $VERSION_CODE) -> $APK_NAME (Tag: $RELEASE_TAG)"
 
       - name: Sign Release APK with Upload Keystore
         env:
@@ -113,9 +125,6 @@ jobs:
             cp "$RAW_APK" "$FINAL_APK"
           fi
 
-          # Simpan salinan nama generik untuk kompatibilitas script lama jika diperlukan
-          cp "$FINAL_APK" eco-tobacco-signed.apk
-
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
@@ -123,11 +132,24 @@ jobs:
           path: ${{ steps.version_info.outputs.apk_name }}
           retention-days: 30
 
-      - name: Create GitHub Release with APK (on tag v*)
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: Create or Update GitHub Release with APK
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ${{ steps.version_info.outputs.apk_name }}
-            eco-tobacco-signed.apk
-          generate_release_notes: true
+          tag_name: ${{ steps.version_info.outputs.release_tag }}
+          name: "Eco Tobacco v${{ steps.version_info.outputs.version_name }} (Build ${{ steps.version_info.outputs.version_code }})"
+          target_commitish: ${{ github.sha }}
+          body_path: RELEASE_NOTES.md
+          files: ${{ steps.version_info.outputs.apk_name }}
+          fail_on_unmatched_files: true
+          make_latest: true
+
+      - name: Commit Auto-Updated CHANGELOG.md back to branch
+        if: steps.changelog.outputs.changelog_updated == 'true' && startsWith(github.ref, 'refs/heads/')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(changelog): update CHANGELOG.md for v${{ steps.version_info.outputs.version_name }} [skip ci]"
+            git push origin HEAD:${{ github.ref_name }} || true
+          fi

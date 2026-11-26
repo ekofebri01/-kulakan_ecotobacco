@@ -40,7 +40,7 @@ interface TobaccoDao {
     @Query("DELETE FROM products WHERE id = :id")
     suspend fun deleteProductById(id: Long)
 
-    @Query("SELECT * FROM transactions ORDER BY timestamp DESC")
+    @Query("SELECT * FROM transactions ORDER BY date DESC, timestamp DESC, id DESC")
     fun getAllTransactions(): Flow<List<TransactionEntity>>
 
     @Query("SELECT * FROM transactions")

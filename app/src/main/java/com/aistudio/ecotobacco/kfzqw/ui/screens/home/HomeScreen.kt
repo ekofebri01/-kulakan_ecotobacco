@@ -231,34 +231,36 @@ fun HomeScreen(
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
             // --- BACKGROUND MATRIX EFFECT ---
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                val colStep = 32.dp.toPx()
-                val rowStep = 44.dp.toPx()
-                val columns = (size.width / colStep).toInt()
-                val rows = (size.height / rowStep).toInt() + 2
-                matrixPaint.textSize = 10.sp.toPx()
+            if (uiConfig.showMatrixBackground) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val colStep = 32.dp.toPx()
+                    val rowStep = 44.dp.toPx()
+                    val columns = (size.width / colStep).toInt()
+                    val rows = (size.height / rowStep).toInt() + 2
+                    matrixPaint.textSize = 10.sp.toPx()
 
-                val goldR = (PremiumGold.red * 255).toInt()
-                val goldG = (PremiumGold.green * 255).toInt()
-                val goldB = (PremiumGold.blue * 255).toInt()
+                    val goldR = (PremiumGold.red * 255).toInt()
+                    val goldG = (PremiumGold.green * 255).toInt()
+                    val goldB = (PremiumGold.blue * 255).toInt()
 
-                for (i in 0 until columns) {
-                    val x = i * colStep
-                    val speedFactor = (i % 5 + 1) * 0.4f
-                    val yOffset = (matrixProgress * size.height * speedFactor) % size.height
+                    for (i in 0 until columns) {
+                        val x = i * colStep
+                        val speedFactor = (i % 5 + 1) * 0.4f
+                        val yOffset = (matrixProgress * size.height * speedFactor) % size.height
 
-                    for (j in 0 until rows) {
-                        val y = (yOffset + j * rowStep) % size.height
-                        val charStr = matrixChars[(i + j) % matrixChars.size]
-                        val alpha = (0.28f * (y / size.height)).coerceIn(0.06f, 0.28f)
+                        for (j in 0 until rows) {
+                            val y = (yOffset + j * rowStep) % size.height
+                            val charStr = matrixChars[(i + j) % matrixChars.size]
+                            val alpha = (0.28f * (y / size.height)).coerceIn(0.06f, 0.28f)
 
-                        matrixPaint.setARGB((alpha * 255).toInt(), goldR, goldG, goldB)
-                        drawContext.canvas.nativeCanvas.drawText(
-                            charStr,
-                            x,
-                            y,
-                            matrixPaint
-                        )
+                            matrixPaint.setARGB((alpha * 255).toInt(), goldR, goldG, goldB)
+                            drawContext.canvas.nativeCanvas.drawText(
+                                charStr,
+                                x,
+                                y,
+                                matrixPaint
+                            )
+                        }
                     }
                 }
             }
