@@ -1426,6 +1426,7 @@ fun TransactionEntryScreen(
         ScanResultDialog(
             scannedResult = scannedItemsPreview!!,
             productMasterList = products,
+            availableUnits = unitOptions,
             showDebugOption = isCameraDebugEnabled,
             onShowDebug = { showScannerDebug = true },
             onConfirm = { itemsToSave, supplierName, confirmedDate ->

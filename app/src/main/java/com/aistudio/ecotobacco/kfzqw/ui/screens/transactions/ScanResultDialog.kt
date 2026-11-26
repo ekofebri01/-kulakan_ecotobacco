@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -45,6 +46,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,6 +91,26 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+private fun findMatchingProduct(name: String, products: List<ProductEntity>): ProductEntity? {
+    val clean = name.trim().lowercase(Locale.ROOT)
+    if (clean.isBlank()) return null
+    // 1. Exact match ignore case
+    products.find { it.name.trim().lowercase(Locale.ROOT) == clean }?.let { return it }
+    // 2. Alphanumeric match (ignoring dots, dashes, punctuation)
+    val alphaClean = clean.filter { it.isLetterOrDigit() }
+    if (alphaClean.isNotEmpty()) {
+        products.find { it.name.filter { c -> c.isLetterOrDigit() }.lowercase(Locale.ROOT) == alphaClean }?.let { return it }
+    }
+    // 3. Substring match for longer names
+    if (clean.length >= 4) {
+        products.find {
+            val pName = it.name.trim().lowercase(Locale.ROOT)
+            pName.isNotBlank() && (clean.contains(pName) || pName.contains(clean))
+        }?.let { return it }
+    }
+    return null
+}
+
 private data class ScannedItemState(
     val id: Int,
     val item: LocalScanner.ScannedItem,
@@ -99,6 +122,7 @@ private data class ScannedItemState(
 fun ScanResultDialog(
     scannedResult: LocalScanner.ScannedResult,
     productMasterList: List<ProductEntity> = emptyList(),
+    availableUnits: List<String> = emptyList(),
     showDebugOption: Boolean = false,
     onShowDebug: () -> Unit = {},
     onConfirm: (List<LocalScanner.ScannedItem>, String, Long) -> Unit,
@@ -109,9 +133,17 @@ fun ScanResultDialog(
     var selectedDate by remember { mutableLongStateOf(scannedResult.date ?: System.currentTimeMillis()) }
     val isDateDetected = scannedResult.date != null
 
-    var itemStates by remember {
+    var itemStates by remember(scannedResult, productMasterList) {
         mutableStateOf(scannedResult.items.mapIndexed { index, item ->
-            ScannedItemState(id = index, item = item, isSelected = true)
+            val matchedProduct = findMatchingProduct(item.name, productMasterList)
+            val resolvedUnit = matchedProduct?.unit?.takeIf { it.isNotBlank() && !it.equals("unit", ignoreCase = true) }
+                ?: if (item.unit.isNotBlank() && !item.unit.equals("unit", ignoreCase = true)) item.unit else "pcs"
+
+            ScannedItemState(
+                id = index,
+                item = item.copy(unit = resolvedUnit),
+                isSelected = true
+            )
         })
     }
     var nextId by remember { mutableIntStateOf(scannedResult.items.size) }
@@ -351,7 +383,7 @@ fun ScanResultDialog(
                             val id = nextId
                             val newItem = ScannedItemState(
                                 id = id,
-                                item = LocalScanner.ScannedItem(name = "", price = 0.0, quantity = 1.0),
+                                item = LocalScanner.ScannedItem(name = "", price = 0.0, quantity = 1.0, unit = "pcs"),
                                 isSelected = true
                             )
                             itemStates = itemStates + newItem
@@ -483,12 +515,20 @@ fun ScanResultDialog(
                                                                         newList[index] = state.copy(
                                                                             item = item.copy(
                                                                                 name = product.name,
-                                                                                price = product.price
+                                                                                price = product.price,
+                                                                                unit = product.unit.ifBlank { "pcs" }
                                                                             )
                                                                         )
                                                                         itemStates = newList
                                                                     },
                                                                     headlineContent = { Text(product.name, fontWeight = FontWeight.Bold) },
+                                                                    supportingContent = {
+                                                                        Text(
+                                                                            "Satuan Database: ${product.unit}",
+                                                                            style = MaterialTheme.typography.bodySmall,
+                                                                            color = MaterialTheme.colorScheme.primary
+                                                                        )
+                                                                    },
                                                                     trailingContent = {
                                                                         Text(
                                                                             "Rp %,.0f".format(product.price),
@@ -504,8 +544,11 @@ fun ScanResultDialog(
                                                 }
                                             }
 
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                var qtyText by remember {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                var qtyText by remember(item.quantity) {
                                                     mutableStateOf(if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString().replace(".", ","))
                                                 }
 
@@ -520,10 +563,24 @@ fun ScanResultDialog(
                                                         itemStates = newList
                                                     },
                                                     label = { Text("Qty") },
-                                                    modifier = Modifier.weight(1f),
+                                                    modifier = Modifier.weight(0.9f),
                                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                                     shape = RoundedCornerShape(12.dp)
                                                 )
+
+                                                OutlinedTextField(
+                                                    value = item.unit,
+                                                    onValueChange = { newUnit ->
+                                                        val newList = itemStates.toMutableList()
+                                                        newList[index] = state.copy(item = item.copy(unit = newUnit))
+                                                        itemStates = newList
+                                                    },
+                                                    label = { Text("Satuan") },
+                                                    modifier = Modifier.weight(1.0f),
+                                                    singleLine = true,
+                                                    shape = RoundedCornerShape(12.dp)
+                                                )
+
                                                 OutlinedTextField(
                                                     value = if (item.price % 1.0 == 0.0) item.price.toInt().toString() else item.price.toString(),
                                                     onValueChange = { newPrice ->
@@ -531,12 +588,49 @@ fun ScanResultDialog(
                                                         newList[index] = state.copy(item = item.copy(price = newPrice.toDoubleOrNull() ?: 0.0))
                                                         itemStates = newList
                                                     },
-                                                    label = { Text("Harga Satuan") },
-                                                    modifier = Modifier.weight(1.5f),
+                                                    label = { Text("Harga") },
+                                                    modifier = Modifier.weight(1.3f),
                                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                                                     shape = RoundedCornerShape(12.dp)
                                                 )
                                             }
+
+                                            // Quick Unit Selection Chips
+                                            val quickUnits = remember(availableUnits) {
+                                                (listOf("kg", "ons", "pcs", "pack", "slop", "bal", "bks") + availableUnits).distinct()
+                                            }
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                quickUnits.forEach { u ->
+                                                    FilterChip(
+                                                        selected = item.unit.equals(u, ignoreCase = true),
+                                                        onClick = {
+                                                            val newList = itemStates.toMutableList()
+                                                            newList[index] = state.copy(item = item.copy(unit = u))
+                                                            itemStates = newList
+                                                        },
+                                                        label = { Text(u, fontSize = 11.sp) },
+                                                        shape = RoundedCornerShape(8.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            val matchedInDb = remember(item.name, productMasterList) {
+                                                findMatchingProduct(item.name, productMasterList)
+                                            }
+                                            if (matchedInDb != null) {
+                                                Text(
+                                                    text = "Satuan produk di database: ${matchedInDb.unit} (disinkronkan otomatis)",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+
                                             Button(
                                                 onClick = { editingId = -1 },
                                                 modifier = Modifier.align(Alignment.End),
@@ -567,15 +661,35 @@ fun ScanResultDialog(
                                                 )
                                             },
                                             headlineContent = {
-                                                Text(
-                                                    item.name.ifBlank { "(Barang Tanpa Nama)" },
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (item.name.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
-                                                )
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Text(
+                                                        item.name.ifBlank { "(Barang Tanpa Nama)" },
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (item.name.isNotBlank()) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.weight(1f, fill = false)
+                                                    )
+                                                    val matched = findMatchingProduct(item.name, productMasterList)
+                                                    if (matched != null) {
+                                                        Spacer(Modifier.width(6.dp))
+                                                        Surface(
+                                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                                            shape = RoundedCornerShape(6.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "DB: ${matched.unit}",
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             },
                                             supportingContent = {
+                                                val qtyDisplay = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString().replace(".", ",")
                                                 Text(
-                                                    "${item.quantity} x Rp %,.0f".format(item.price),
+                                                    "$qtyDisplay ${item.unit} × Rp %,.0f".format(item.price),
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                             },

@@ -1288,14 +1288,32 @@ class TobaccoViewModel(
         val allProducts = repository.getAllProductsDirect()
         val existing = allProducts.find { it.name.trim().equals(name.trim(), ignoreCase = true) }
 
+        val targetUnit = if (unit.isNotBlank() && !unit.equals("unit", ignoreCase = true)) {
+            unit.trim()
+        } else {
+            existing?.unit?.takeIf { it.isNotBlank() && !it.equals("unit", ignoreCase = true) }
+                ?: if (unit.isNotBlank()) unit.trim() else "pcs"
+        }
+
         if (existing != null) {
-            // Update existing if price or unit changed
-            if (existing.price != price || existing.unit != unit) {
-                repository.updateProduct(existing.copy(price = price, unit = unit))
+            if (existing.price != price || existing.unit != targetUnit) {
+                val updated = existing.copy(price = price, unit = targetUnit, updatedAt = System.currentTimeMillis())
+                repository.updateProduct(updated)
+                firebaseAuth.uid?.let { uid ->
+                    firestoreSync.persistProduct(uid, updated)
+                }
             }
         } else {
-            // Add new product
-            repository.insertProduct(ProductEntity(name = name.trim(), price = price, unit = unit))
+            val newProduct = ProductEntity(
+                name = name.trim(),
+                price = price,
+                unit = targetUnit,
+                updatedAt = System.currentTimeMillis()
+            )
+            repository.insertProduct(newProduct)
+            firebaseAuth.uid?.let { uid ->
+                firestoreSync.persistProduct(uid, newProduct)
+            }
         }
     }
 
@@ -1435,14 +1453,27 @@ class TobaccoViewModel(
 
     fun addScannedTransactions(items: List<ScannedItem>, supplier: String, date: Long? = null) = viewModelScope.launch(Dispatchers.IO) {
         val now = date ?: System.currentTimeMillis()
+        val allProducts = repository.getAllProductsDirect()
         
+        // Selaraskan satuan tiap item dengan database (jika item memakai "unit" generik, pakai satuan DB)
+        val resolvedItems = items.map { item ->
+            val existing = allProducts.find { it.name.trim().equals(item.name.trim(), ignoreCase = true) }
+            val resolvedUnit = if (item.unit.isNotBlank() && !item.unit.equals("unit", ignoreCase = true)) {
+                item.unit.trim()
+            } else {
+                existing?.unit?.takeIf { it.isNotBlank() && !it.equals("unit", ignoreCase = true) }
+                    ?: item.unit.ifBlank { "pcs" }
+            }
+            item.copy(unit = resolvedUnit)
+        }
+
         // Sync each scanned item to product database
-        items.forEach { item ->
+        resolvedItems.forEach { item ->
             val uPrice = if (item.unitPrice > 0) item.unitPrice else (item.totalPrice / item.quantity)
             syncProductFromTransaction(item.name, uPrice, item.unit)
         }
 
-        val transactions = items.map { item ->
+        val transactions = resolvedItems.map { item ->
             val uPrice = if (item.unitPrice > 0) item.unitPrice else (item.totalPrice / item.quantity)
             val total = if (item.totalPrice > 0) item.totalPrice else (item.quantity * uPrice)
             TransactionEntity(
@@ -1469,7 +1500,7 @@ class TobaccoViewModel(
             ScannedItem(
                 name = item.name,
                 quantity = item.quantity,
-                unit = item.unit.ifBlank { "pcs" },
+                unit = if (item.unit.isNotBlank() && !item.unit.equals("unit", ignoreCase = true)) item.unit else "pcs",
                 unitPrice = item.price,
                 totalPrice = item.price * item.quantity,
                 needsReview = item.needsReview,
