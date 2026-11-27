@@ -2004,22 +2004,16 @@ fun SharePreviewDialog(
     val context = LocalContext.current
     var selectedTab by remember { mutableIntStateOf(0) }
     var shareNote by remember { mutableStateOf("") }
-    var selectedSubCategory by remember { mutableStateOf("SEMUA") }
-    val uniqueSubCategories = remember(plan) {
-        (listOf("SEMUA") + plan.items.mapNotNull { item ->
-            allProducts.find { it.name.equals(item.productName, ignoreCase = true) }?.subCategory
-        }.distinct().filter { it.isNotBlank() }).sorted()
-    }
-    
+
     val exportType = when (selectedTab) {
         0 -> ProcurementExportType.CHECKLIST
         1 -> ProcurementExportType.SUPPLIER_ORDER
         2 -> ProcurementExportType.DETAIL
         else -> ProcurementExportType.PLAIN
     }
-    
-    val previewText = remember(plan, exportType, shareNote, selectedSubCategory) {
-        generateShareText(plan, exportType, shareNote, selectedSubCategory, allProducts)
+
+    val previewText = remember(plan, exportType, shareNote) {
+        generateShareText(plan, exportType, shareNote, null, allProducts)
     }
 
     val primaryColor = MaterialTheme.colorScheme.primary
@@ -2070,38 +2064,6 @@ fun SharePreviewDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // Tab Selection Format
-                Text(
-                    text = "Pilih Sub Kategori",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = primaryColor
-                )
-                ScrollableTabRow(
-                    selectedTabIndex = uniqueSubCategories.indexOf(selectedSubCategory),
-                    edgePadding = 0.dp,
-                    containerColor = surfaceVariant.copy(alpha = 0.4f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    uniqueSubCategories.forEachIndexed { index, sub ->
-                        Tab(
-                            selected = selectedSubCategory == sub,
-                            onClick = { selectedSubCategory = sub },
-                            text = {
-                                Text(
-                                    text = sub,
-                                    fontWeight = if (selectedSubCategory == sub) FontWeight.Bold else FontWeight.Medium,
-                                    fontSize = 12.sp
-                                )
-                            },
-                            selectedContentColor = primaryColor,
-                            unselectedContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                
-                Spacer(Modifier.height(8.dp))
-                
                 Text(
                     text = "Pilih Format",
                     style = MaterialTheme.typography.labelSmall,
@@ -2270,7 +2232,7 @@ fun SharePreviewDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onShareText(exportType, shareNote, selectedSubCategory) },
+                onClick = { onShareText(exportType, shareNote, "SEMUA") },
                 shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()

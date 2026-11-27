@@ -14,36 +14,49 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 
 private val LightColorScheme = lightColorScheme(
-    primary = AmberPrimary,
-    onPrimary = AmberOnPrimary,
-    primaryContainer = AmberPrimaryContainer,
-    onPrimaryContainer = AmberOnPrimaryContainer,
+    primary = TobaccoAmber,
+    onPrimary = Color(0xFFFFFFFF),
+    primaryContainer = TobaccoAmberContainer,
+    onPrimaryContainer = TobaccoOnAmberContainer,
     secondary = AmberSecondary,
     onSecondary = AmberOnSecondary,
     secondaryContainer = AmberSecondaryContainer,
     onSecondaryContainer = AmberOnSecondaryContainer,
-    background = BackgroundLight,
-    onBackground = OnBackgroundLight,
-    surface = SurfaceLight,
-    onSurface = OnSurfaceLight
+    background = KraftBackground,
+    onBackground = KraftText,
+    surface = KraftSurface,
+    onSurface = KraftText,
+    surfaceVariant = Color(0xFFF0EFEA),
+    onSurfaceVariant = KraftSubtext,
+    outline = KraftBorder,
+    outlineVariant = KraftBorder,
+    tertiary = EarthSuccess,
+    onTertiary = Color(0xFFFFFFFF),
+    tertiaryContainer = EarthSuccessContainer,
+    onTertiaryContainer = Color(0xFF022C22)
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Color(0xFFFFB77C),
-    onPrimary = Color(0xFF4D2700),
-    primaryContainer = Color(0xFF6E3900),
-    onPrimaryContainer = Color(0xFFFFDBC8),
-    secondary = Color(0xFFE4BFA8),
-    onSecondary = Color(0xFF422B1D),
-    secondaryContainer = Color(0xFF5B4131),
-    onSecondaryContainer = Color(0xFFFFDED1),
-    background = Color(0xFF121212),
-    onBackground = Color(0xFFECE0DA),
-    surface = Color(0xFF1A1816),
-    onSurface = Color(0xFFECE0DA),
-    surfaceVariant = Color(0xFF292421),
-    onSurfaceVariant = Color(0xFFD2C4BC),
-    outlineVariant = Color(0xFF463E39)
+    primary = WarmAmber,
+    onPrimary = Color(0xFF451A03),
+    primaryContainer = WarmAmberContainer,
+    onPrimaryContainer = WarmOnAmberContainer,
+    secondary = Color(0xFFD6D3D1),
+    onSecondary = Color(0xFF292524),
+    secondaryContainer = Color(0xFF44403C),
+    onSecondaryContainer = Color(0xFFF5F5F4),
+    background = LeafCharcoalBg,
+    onBackground = LeafText,
+    surface = LeafCharcoalCard,
+    onSurface = LeafText,
+    surfaceVariant = Color(0xFF252B28),
+    onSurfaceVariant = LeafSubtext,
+    outline = LeafCharcoalBorder,
+    outlineVariant = LeafCharcoalBorder,
+    tertiary = LeafSuccess,
+    onTertiary = Color(0xFF064E3B),
+    tertiaryContainer = LeafSuccessContainer,
+    onTertiaryContainer = Color(0xFFD1FAE5)
 )
 
 private val CyberColorScheme = darkColorScheme(

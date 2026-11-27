@@ -6,13 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,27 +17,29 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -65,7 +63,9 @@ import com.aistudio.ecotobacco.kfzqw.ui.theme.UiConfig
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModel
 import com.aistudio.ecotobacco.kfzqw.viewmodel.TobaccoViewModelFactory
 import com.aistudio.ecotobacco.kfzqw.widget.TobaccoAppWidgetProvider
-import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.min
 
 class MainActivity : ComponentActivity() {
 
@@ -197,7 +197,61 @@ fun AppNavigation(
             }
         }
 
-        Box(modifier = Modifier.fillMaxSize()) {
+        val coroutineScope = rememberCoroutineScope()
+        val settingsOpenProgress = remember {
+            Animatable(if (initialRoute == Routes.SETTINGS) 1f else 0f)
+        }
+        var pendingCloseVelocity by remember { mutableFloatStateOf(0f) }
+        var isSettingsPrewarmed by remember { mutableStateOf(initialRoute == Routes.SETTINGS) }
+
+        LaunchedEffect(isAppReady, splashDismissed) {
+            if (!isSettingsPrewarmed) {
+                delay(350L)
+                isSettingsPrewarmed = true
+            }
+        }
+
+        LaunchedEffect(isSettingsOpen) {
+            if (isSettingsOpen) {
+                isSettingsPrewarmed = true
+                settingsOpenProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = 290f
+                    )
+                )
+            } else {
+                val initialVelocity = pendingCloseVelocity
+                pendingCloseVelocity = 0f
+                settingsOpenProgress.animateTo(
+                    targetValue = 0f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioNoBouncy,
+                        stiffness = 340f
+                    ),
+                    initialVelocity = initialVelocity
+                )
+            }
+        }
+
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val density = LocalDensity.current
+            val panelWidthPx = with(density) {
+                min(maxWidth.toPx() * 0.92f, 460.dp.toPx()).coerceAtLeast(1f)
+            }
+            val isPanelVisible by remember {
+                derivedStateOf { isSettingsOpen || settingsOpenProgress.value > 0.002f }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val p = settingsOpenProgress.value
+                        translationX = if (p > 0.001f) -panelWidthPx * 0.07f * p else 0f
+                    }
+            ) {
             when (currentRoute) {
                 Routes.HOME -> {
                     HomeScreen(
@@ -321,21 +375,19 @@ fun AppNavigation(
                     )
                 }
             }
+            }
 
-            // --- SETTINGS SLIDING WINDOW (SLIDES IN FROM RIGHT TO LEFT) ---
+            // --- SETTINGS SLIDING WINDOW (GPU-ACCELERATED SMOOTH SPRING + GESTURE) ---
             BackHandler(enabled = isSettingsOpen) {
                 isSettingsOpen = false
             }
 
-            AnimatedVisibility(
-                visible = isSettingsOpen,
-                enter = fadeIn(tween(240)),
-                exit = fadeOut(tween(220))
-            ) {
+            if (isPanelVisible) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.48f))
+                        .graphicsLayer { alpha = settingsOpenProgress.value }
+                        .background(Color.Black.copy(alpha = 0.46f))
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
                             indication = null
@@ -345,40 +397,54 @@ fun AppNavigation(
                 )
             }
 
-            var dragOffsetPx by remember(isSettingsOpen) { mutableFloatStateOf(0f) }
-            val dismissThresholdPx = with(LocalDensity.current) { 110.dp.toPx() }
-            val windowShape = RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)
+            if (isSettingsPrewarmed || isPanelVisible) {
+                val windowShape = remember {
+                    RoundedCornerShape(topStart = 28.dp, bottomStart = 28.dp)
+                }
 
-            AnimatedVisibility(
-                visible = isSettingsOpen,
-                modifier = Modifier.align(Alignment.CenterEnd),
-                enter = slideInHorizontally(
-                    animationSpec = tween(durationMillis = 320, easing = FastOutSlowInEasing),
-                    initialOffsetX = { fullWidth -> fullWidth }
-                ) + fadeIn(animationSpec = tween(200)),
-                exit = slideOutHorizontally(
-                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing),
-                    targetOffsetX = { fullWidth -> fullWidth }
-                ) + fadeOut(animationSpec = tween(180))
-            ) {
                 Surface(
                     modifier = Modifier
+                        .align(Alignment.CenterEnd)
                         .fillMaxHeight()
                         .fillMaxWidth(0.92f)
                         .widthIn(max = 460.dp)
-                        .offset { IntOffset(dragOffsetPx.roundToInt(), 0) }
-                        .clip(windowShape)
-                        .draggable(
-                            orientation = Orientation.Horizontal,
-                            state = rememberDraggableState { delta ->
-                                dragOffsetPx = (dragOffsetPx + delta).coerceAtLeast(0f)
-                            },
-                            onDragStopped = {
-                                if (dragOffsetPx >= dismissThresholdPx) {
-                                    isSettingsOpen = false
-                                } else {
-                                    dragOffsetPx = 0f
-                                }
+                        .graphicsLayer {
+                            val p = settingsOpenProgress.value
+                            translationX = (1f - p) * panelWidthPx
+                            alpha = if (p <= 0.001f) 0f else (p * 5f).coerceIn(0f, 1f)
+                        }
+                        .then(
+                            if (isPanelVisible) {
+                                Modifier.draggable(
+                                    orientation = Orientation.Horizontal,
+                                    state = rememberDraggableState { delta ->
+                                        coroutineScope.launch {
+                                            val updated = (settingsOpenProgress.value - (delta / panelWidthPx))
+                                                .coerceIn(0f, 1f)
+                                            settingsOpenProgress.snapTo(updated)
+                                        }
+                                    },
+                                    onDragStopped = { velocityPxPerSec ->
+                                        val normVelocity = -velocityPxPerSec / panelWidthPx
+                                        if (velocityPxPerSec > 650f || settingsOpenProgress.value < 0.72f) {
+                                            pendingCloseVelocity = normVelocity
+                                            isSettingsOpen = false
+                                        } else {
+                                            coroutineScope.launch {
+                                                settingsOpenProgress.animateTo(
+                                                    targetValue = 1f,
+                                                    animationSpec = spring(
+                                                        dampingRatio = Spring.DampingRatioNoBouncy,
+                                                        stiffness = 320f
+                                                    ),
+                                                    initialVelocity = normVelocity
+                                                )
+                                            }
+                                        }
+                                    }
+                                )
+                            } else {
+                                Modifier.clearAndSetSemantics {}
                             }
                         ),
                     shape = windowShape,
@@ -389,6 +455,7 @@ fun AppNavigation(
                 ) {
                     SettingsScreen(
                         viewModel = viewModel,
+                        isOpen = isSettingsOpen,
                         onNavigateBack = {
                             isSettingsOpen = false
                         },
