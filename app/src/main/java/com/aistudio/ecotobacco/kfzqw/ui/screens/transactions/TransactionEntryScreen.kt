@@ -5,40 +5,38 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Clear
@@ -47,6 +45,9 @@ import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storefront
@@ -55,21 +56,12 @@ import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.FilledTonalIconButton
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -79,7 +71,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -92,8 +83,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -101,10 +95,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.data.utils.LocalScanner
 import com.aistudio.ecotobacco.kfzqw.ui.components.UnitManagementDialog
 import com.aistudio.ecotobacco.kfzqw.ui.theme.LocalUiConfig
@@ -125,7 +119,7 @@ data class ManualCartItem(
     val unit: String
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun TransactionEntryScreen(
     viewModel: TobaccoViewModel,
@@ -228,38 +222,36 @@ fun TransactionEntryScreen(
         }
     }
 
+    val bgColor = MaterialTheme.colorScheme.background
     val primaryColor = MaterialTheme.colorScheme.primary
+    val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
     val surfaceColor = MaterialTheme.colorScheme.surface
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
+    val isDarkSurface = bgColor.luminance() < 0.45f
+    val inputFieldBg = if (isDarkSurface) Color(0xFF101513) else surfaceVariant.copy(alpha = 0.45f)
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = bgColor,
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "Input Kulakan",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 18.sp.scaled
-                        )
-                        Text(
-                            text = "Catat Pembelian & Stok",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = primaryColor,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = onNavigateBack,
-                        colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = surfaceVariant.copy(alpha = 0.5f)
-                        ),
-                        modifier = Modifier.padding(start = 12.dp).size(38.dp)
-                    ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp.scaled, vertical = 12.dp.scaled),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Surface(
+                    onClick = onNavigateBack,
+                    shape = CircleShape,
+                    color = surfaceColor,
+                    border = BorderStroke(1.dp, borderColor),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .testTag("transaction_back_button")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Kembali",
@@ -267,44 +259,66 @@ fun TransactionEntryScreen(
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                },
-                actions = {
-                    FilledTonalIconButton(
-                        onClick = { csvPickerLauncher.launch("text/*") },
-                        modifier = Modifier.padding(end = 12.dp).size(38.dp),
-                        colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = primaryColor.copy(alpha = 0.15f),
-                            contentColor = primaryColor
-                        )
-                    ) {
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
+                ) {
+                    Text(
+                        text = "Input Kulakan",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 18.sp.scaled
+                    )
+                    Text(
+                        text = "Catat Pembelian & Stok",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = primaryColor,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 11.5.sp.scaled
+                    )
+                }
+
+                Surface(
+                    onClick = { csvPickerLauncher.launch("text/*") },
+                    shape = CircleShape,
+                    color = primaryColor.copy(alpha = 0.14f),
+                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.28f)),
+                    modifier = Modifier
+                        .size(44.dp)
+                        .testTag("transaction_import_csv_button")
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.Default.FileUpload,
                             contentDescription = "Import CSV",
+                            tint = primaryColor,
                             modifier = Modifier.size(20.dp)
                         )
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background
-                )
-            )
+                }
+            }
         },
         bottomBar = {
-            // Modern Floating Bottom Bar with Live Total & Save Action
+            val isFormValid = manualItemsList.isNotEmpty() ||
+                (selectedProduct.isNotBlank() && quantity.isNotBlank() && unitPrice.isNotBlank() && parsedQty > 0)
+
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .imePadding(),
-                color = surfaceColor,
-                tonalElevation = 8.dp,
-                shadowElevation = 12.dp,
+                color = if (isDarkSurface) Color(0xFF121815) else surfaceColor,
+                shadowElevation = 14.dp,
                 shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                border = BorderStroke(1.dp, borderColor.copy(alpha = 0.85f))
             ) {
                 Row(
                     modifier = Modifier
+                        .fillMaxWidth()
                         .navigationBarsPadding()
-                        .padding(horizontal = 20.dp, vertical = 14.dp),
+                        .padding(horizontal = 20.dp.scaled, vertical = 14.dp.scaled),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -313,27 +327,29 @@ fun TransactionEntryScreen(
                             text = "Total Kulakan",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.Medium
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 12.sp.scaled
                         )
                         Text(
                             text = currencyFormatter.format(totalTransaction).replace("Rp", "Rp "),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Black,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
                             color = if (totalTransaction > 0) primaryColor else MaterialTheme.colorScheme.onSurface,
-                            fontSize = 20.sp.scaled
+                            fontSize = 24.sp.scaled,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         if (parsedQty > 0) {
                             Text(
                                 text = "Kuantitas: $quantity $activeUnit",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp.scaled
                             )
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(16.dp))
-
-                    val isFormValid = manualItemsList.isNotEmpty() || (selectedProduct.isNotBlank() && quantity.isNotBlank() && unitPrice.isNotBlank() && (parsedQty > 0))
+                    Spacer(modifier = Modifier.width(14.dp))
 
                     Button(
                         onClick = {
@@ -368,15 +384,17 @@ fun TransactionEntryScreen(
                             }
                         },
                         modifier = Modifier
-                            .height(52.dp)
-                            .weight(1.1f),
+                            .height(50.dp)
+                            .width(156.dp)
+                            .testTag("save_transaction_button"),
                         shape = RoundedCornerShape(16.dp),
                         enabled = isFormValid,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = primaryColor,
-                            disabledContainerColor = primaryColor.copy(alpha = 0.3f)
-                        ),
-                        elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
+                            contentColor = onPrimaryColor,
+                            disabledContainerColor = if (isDarkSurface) Color(0xFF1A2821) else borderColor.copy(alpha = 0.5f),
+                            disabledContentColor = if (isDarkSurface) Color(0xFF7B8E84) else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.Check,
@@ -386,8 +404,8 @@ fun TransactionEntryScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             text = "Simpan",
-                            fontSize = 16.sp.scaled,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 15.sp.scaled,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }
@@ -396,362 +414,401 @@ fun TransactionEntryScreen(
     ) { innerPadding: PaddingValues ->
         val scrollState = rememberScrollState()
 
-        Column(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp)
-                .animateContentSize(),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Spacer(modifier = Modifier.height(4.dp))
+        Box(modifier = Modifier.fillMaxSize()) {
+            // Subtle top radial emerald glow consistent with HomeScreen
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            primaryColor.copy(alpha = if (isDarkSurface) 0.12f else 0.06f),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.2f, size.height * 0.04f),
+                        radius = size.width * 0.85f
+                    ),
+                    center = Offset(size.width * 0.2f, size.height * 0.04f),
+                    radius = size.width * 0.85f
+                )
+            }
 
-            // --- 1. HERO AI NOTA SCANNER BANNER ---
-            Card(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .clickable { onNavigateToScanner() },
-                colors = CardDefaults.cardColors(
-                    containerColor = surfaceVariant.copy(alpha = 0.45f)
-                ),
-                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.35f)),
-                shape = RoundedCornerShape(20.dp)
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .padding(
+                        start = 16.dp.scaled,
+                        end = 16.dp.scaled,
+                        top = innerPadding.calculateTopPadding() + 4.dp,
+                        bottom = innerPadding.calculateBottomPadding() + 24.dp
+                    )
+                    .animateContentSize(),
+                verticalArrangement = Arrangement.spacedBy(14.dp.scaled)
             ) {
-                Box(
+                // --- 1. HERO AI NOTA SCANNER CARD ---
+                val heroGradientStart = lerp(Color(0xFF18563C), primaryColor, 0.12f)
+                val heroGradientEnd = lerp(Color(0xFF0E3424), primaryColor, 0.05f)
+
+                Surface(
+                    onClick = onNavigateToScanner,
+                    shape = RoundedCornerShape(22.dp),
+                    color = Color.Transparent,
+                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.30f)),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(
-                                    primaryColor.copy(alpha = 0.12f),
-                                    Color.Transparent
-                                )
-                            )
-                        )
-                        .padding(16.dp)
+                        .testTag("hero_scan_nota_card")
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                Brush.linearGradient(listOf(heroGradientStart, heroGradientEnd))
+                            )
+                            .padding(16.dp.scaled),
+                        verticalArrangement = Arrangement.spacedBy(14.dp.scaled)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(46.dp)
-                                    .background(
-                                        Brush.linearGradient(
-                                            listOf(primaryColor, primaryColor.copy(alpha = 0.7f))
-                                        ),
-                                        shape = RoundedCornerShape(14.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
+                            Surface(
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White.copy(alpha = 0.13f),
+                                modifier = Modifier.size(46.dp.scaled)
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.DocumentScanner,
-                                    contentDescription = "Scan Nota",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(24.dp)
-                                )
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = "Scan Nota",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(23.dp.scaled)
+                                    )
+                                }
                             }
-                            Spacer(modifier = Modifier.width(14.dp))
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+
+                            Spacer(modifier = Modifier.width(12.dp.scaled))
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
                                     Text(
                                         text = "Scan Nota Otomatis",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = Color.White,
+                                        fontSize = 16.sp.scaled
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .background(primaryColor.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color.White.copy(alpha = 0.14f),
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.18f))
                                     ) {
                                         Text(
                                             text = "OCR",
-                                            fontSize = 9.sp,
+                                            fontSize = 10.sp,
                                             fontWeight = FontWeight.ExtraBold,
-                                            color = primaryColor
+                                            color = Color.White,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                         )
                                     }
                                 }
                                 Text(
                                     text = "Foto atau pilih struk dari galeri, data terisi otomatis",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 12.sp
+                                    color = Color.White.copy(alpha = 0.80f),
+                                    fontSize = 12.5.sp.scaled,
+                                    lineHeight = 17.sp.scaled
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
-
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp.scaled),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            FilledTonalIconButton(
+                            Button(
+                                onClick = onNavigateToScanner,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = primaryColor,
+                                    contentColor = onPrimaryColor
+                                ),
+                                shape = RoundedCornerShape(14.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .testTag("scan_camera_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoCamera,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = "Pindai",
+                                    fontSize = 15.sp.scaled,
+                                    fontWeight = FontWeight.ExtraBold
+                                )
+                            }
+
+                            Surface(
                                 onClick = {
                                     galleryScanLauncher.launch(
                                         PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                     )
                                 },
+                                shape = RoundedCornerShape(14.dp),
+                                color = Color.White.copy(alpha = 0.10f),
+                                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
                                 modifier = Modifier
-                                    .size(40.dp)
-                                    .testTag("scan_gallery_button"),
-                                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                    containerColor = primaryColor.copy(alpha = 0.14f),
-                                    contentColor = primaryColor
-                                )
+                                    .size(48.dp)
+                                    .testTag("scan_gallery_button")
                             ) {
-                                Icon(
-                                    imageVector = Icons.Default.Image,
-                                    contentDescription = "Scan Nota dari Galeri",
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-
-                            Button(
-                                onClick = onNavigateToScanner,
-                                colors = ButtonDefaults.buttonColors(containerColor = primaryColor),
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                                modifier = Modifier
-                                    .height(40.dp)
-                                    .testTag("scan_camera_button")
-                            ) {
-                                Text("Pindai", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.Image,
+                                        contentDescription = "Scan Nota dari Galeri",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(21.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            // --- 2. LIVE DIGITAL BILL / STRUK ELEKTRONIK CARD ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = surfaceColor
-                ),
-                border = BorderStroke(
-                    1.dp,
-                    if (totalTransaction > 0) primaryColor.copy(alpha = 0.5f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                ),
-                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                // --- 2. RINGKASAN NOTA CARD ---
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = surfaceColor,
+                    border = BorderStroke(
+                        1.dp,
+                        if (totalTransaction > 0) primaryColor.copy(alpha = 0.45f) else borderColor
+                    )
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp.scaled),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(
-                                        if (totalTransaction > 0) primaryColor else MaterialTheme.colorScheme.outline,
-                                        shape = CircleShape
-                                    )
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "RINGKASAN NOTA",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (totalTransaction > 0) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                                letterSpacing = 1.sp
-                            )
-                        }
-
-                        Text(
-                            text = SimpleDateFormat("dd MMM yyyy", Locale.forLanguageTag("id-ID")).format(Date(selectedDate)),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-
-                    if (selectedProduct.isNotBlank() || parsedQty > 0 || parsedPrice > 0) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.Bottom
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (selectedProduct.isNotBlank()) selectedProduct else "Pilih produk...",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .background(
+                                            if (totalTransaction > 0) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                                            shape = CircleShape
+                                        )
                                 )
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = if (supplier.isNotBlank()) "Pengepul: $supplier" else "Supplier belum diisi",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "RINGKASAN NOTA",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (totalTransaction > 0) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    letterSpacing = 1.1.sp,
+                                    fontSize = 11.5.sp.scaled
                                 )
                             }
 
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = currencyFormatter.format(totalTransaction).replace("Rp", "Rp "),
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    fontWeight = FontWeight.Black,
-                                    color = primaryColor
-                                )
-                                Text(
-                                    text = "$quantity $activeUnit × ${currencyFormatter.format(parsedPrice).replace("Rp", "Rp ")}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    fontSize = 11.sp
-                                )
-                            }
+                            Text(
+                                text = SimpleDateFormat("dd MMM yyyy", Locale.forLanguageTag("id-ID")).format(Date(selectedDate)),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 11.5.sp.scaled
+                            )
                         }
 
-                        // Smart Insight (Margin / Jual jika ada data di master)
-                        if (matchedProduct != null && matchedProduct.sellingPrice > 0) {
-                            val potentialRevenue = parsedQty * matchedProduct.sellingPrice
-                            val potentialProfit = potentialRevenue - totalTransaction
-                            val profitMarginPct = if (totalTransaction > 0) ((potentialProfit / totalTransaction) * 100) else 0.0
-
-                            Surface(
+                        if (selectedProduct.isNotBlank() || parsedQty > 0 || parsedPrice > 0 || manualItemsList.isNotEmpty()) {
+                            Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                color = primaryColor.copy(alpha = 0.08f),
-                                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.2f))
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.Bottom
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.TrendingUp,
-                                            contentDescription = null,
-                                            tint = primaryColor,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Jual: ${currencyFormatter.format(matchedProduct.sellingPrice).replace("Rp", "Rp ")}/${matchedProduct.sellingUnit}",
-                                            fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurface,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                    }
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "Est. Margin: +${String.format(Locale.US, "%.1f", profitMarginPct)}%",
-                                        fontSize = 11.sp,
+                                        text = when {
+                                            selectedProduct.isNotBlank() -> selectedProduct
+                                            manualItemsList.isNotEmpty() -> "${manualItemsList.size} Item di Daftar"
+                                            else -> "Pilih produk..."
+                                        },
+                                        style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = primaryColor
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = if (supplier.isNotBlank()) "Pengepul: $supplier" else "Supplier belum diisi",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
+
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = currencyFormatter.format(totalTransaction).replace("Rp", "Rp "),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontWeight = FontWeight.Black,
+                                        color = primaryColor
+                                    )
+                                    if (parsedQty > 0 || parsedPrice > 0) {
+                                        Text(
+                                            text = "$quantity $activeUnit × ${currencyFormatter.format(parsedPrice).replace("Rp", "Rp ")}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    } else {
-                        // Empty bill hint
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 6.dp),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
+
+                            // Smart Insight (Margin / Jual jika ada data di master)
+                            if (matchedProduct != null && matchedProduct.sellingPrice > 0) {
+                                val potentialRevenue = parsedQty * matchedProduct.sellingPrice
+                                val potentialProfit = potentialRevenue - currentInputTotal
+                                val profitMarginPct = if (currentInputTotal > 0) ((potentialProfit / currentInputTotal) * 100) else 0.0
+
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = primaryColor.copy(alpha = 0.09f),
+                                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.22f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.TrendingUp,
+                                                contentDescription = null,
+                                                tint = primaryColor,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Jual: ${currencyFormatter.format(matchedProduct.sellingPrice).replace("Rp", "Rp ")}/${matchedProduct.sellingUnit}",
+                                                fontSize = 11.5.sp,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                        Text(
+                                            text = "Est. Margin: +${String.format(Locale.US, "%.1f", profitMarginPct)}%",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryColor
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
                             Text(
                                 text = "Ketik atau pilih produk di bawah untuk kalkulasi nota instan.",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.5.sp.scaled,
+                                lineHeight = 18.sp.scaled
                             )
                         }
                     }
                 }
-            }
 
-            // --- 3. DETAIL TRANSAKSI SECTION ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = surfaceColor),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                // --- 3. INFORMASI TRANSAKSI CARD ---
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = surfaceColor,
+                    border = BorderStroke(1.dp, borderColor)
                 ) {
-                    Text(
-                        text = "Informasi Transaksi",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp.scaled),
+                        verticalArrangement = Arrangement.spacedBy(12.dp.scaled)
+                    ) {
+                        Text(
+                            text = "Informasi Transaksi",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 16.5.sp.scaled
+                        )
 
-                    // Tanggal Transaksi Modern
-                    Box(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.forLanguageTag("id-ID")).format(Date(selectedDate)),
-                            onValueChange = {},
-                            label = { Text("Tanggal Pembelian") },
-                            modifier = Modifier.fillMaxWidth(),
-                            readOnly = true,
-                            enabled = true,
-                            leadingIcon = {
+                        // Tanggal Pembelian Field
+                        Surface(
+                            onClick = {
+                                val cal = Calendar.getInstance().apply { timeInMillis = selectedDate }
+                                DatePickerDialog(
+                                    context,
+                                    { _, year, month, day ->
+                                        calendar.set(year, month, day)
+                                        selectedDate = calendar.timeInMillis
+                                    },
+                                    cal.get(Calendar.YEAR),
+                                    cal.get(Calendar.MONTH),
+                                    cal.get(Calendar.DAY_OF_MONTH)
+                                ).show()
+                            },
+                            shape = RoundedCornerShape(16.dp),
+                            color = inputFieldBg,
+                            border = BorderStroke(1.dp, borderColor),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("transaction_date_picker")
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.CalendarToday,
-                                    contentDescription = null,
+                                    contentDescription = "Tanggal Pembelian",
                                     tint = primaryColor,
                                     modifier = Modifier.size(20.dp)
                                 )
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = primaryColor,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            ),
-                            shape = RoundedCornerShape(14.dp)
-                        )
-
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable {
-                                    DatePickerDialog(
-                                        context,
-                                        { _, year, month, day ->
-                                            calendar.set(year, month, day)
-                                            selectedDate = calendar.timeInMillis
-                                        },
-                                        calendar.get(Calendar.YEAR),
-                                        calendar.get(Calendar.MONTH),
-                                        calendar.get(Calendar.DAY_OF_MONTH)
-                                    ).show()
+                                Spacer(Modifier.width(12.dp))
+                                Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                    Text(
+                                        text = "Tanggal Pembelian",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp.scaled
+                                    )
+                                    Text(
+                                        text = SimpleDateFormat("EEEE, dd MMMM yyyy", Locale.forLanguageTag("id-ID")).format(Date(selectedDate)),
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 14.sp.scaled
+                                    )
                                 }
-                        )
-                    }
+                            }
+                        }
 
-                    // Supplier Input with Suggestion Dropdown & Quick Chips
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // Supplier Autocomplete Dropdown
                         ExposedDropdownMenuBox(
                             expanded = supplierExpanded,
                             onExpandedChange = {
-                                supplierExpanded = savedSuppliers.isNotEmpty() && supplier.isNotBlank()
+                                supplierExpanded = savedSuppliers.isNotEmpty()
                             }
                         ) {
                             OutlinedTextField(
@@ -762,8 +819,13 @@ fun TransactionEntryScreen(
                                         saved.contains(it.trim(), ignoreCase = true)
                                     }
                                 },
-                                label = { Text("Supplier / Pengepul") },
-                                placeholder = { Text("Contoh: Pengepul Temanggung") },
+                                placeholder = {
+                                    Text(
+                                        "Supplier / Pengepul",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 14.sp.scaled
+                                    )
+                                },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.Default.Storefront,
@@ -775,24 +837,41 @@ fun TransactionEntryScreen(
                                 trailingIcon = {
                                     if (supplier.isNotBlank()) {
                                         IconButton(onClick = { supplier = "" }) {
-                                            Icon(Icons.Default.Clear, contentDescription = "Hapus", modifier = Modifier.size(18.dp))
+                                            Icon(
+                                                Icons.Default.Clear,
+                                                contentDescription = "Hapus",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
                                         }
                                     } else {
-                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = supplierExpanded)
+                                        Icon(
+                                            imageVector = Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Pilih Supplier",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
                                     }
                                 },
+                                singleLine = true,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .menuAnchor(),
-                                shape = RoundedCornerShape(14.dp),
+                                    .menuAnchor()
+                                    .testTag("supplier_input"),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor = primaryColor,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                    unfocusedBorderColor = borderColor,
+                                    focusedContainerColor = inputFieldBg,
+                                    unfocusedContainerColor = inputFieldBg,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
                                 )
                             )
 
-                            val supplierMatches = savedSuppliers.filter {
-                                supplier.isNotBlank() && it.contains(supplier.trim(), ignoreCase = true)
+                            val supplierMatches = remember(supplier, savedSuppliers) {
+                                if (supplier.isBlank()) savedSuppliers
+                                else savedSuppliers.filter { it.contains(supplier.trim(), ignoreCase = true) }
                             }
                             ExposedDropdownMenu(
                                 expanded = supplierExpanded && supplierMatches.isNotEmpty(),
@@ -801,10 +880,17 @@ fun TransactionEntryScreen(
                                     .background(surfaceColor)
                                     .exposedDropdownSize()
                             ) {
-                                supplierMatches.take(5).forEach { savedSupplier ->
+                                supplierMatches.take(6).forEach { savedSupplier ->
                                     DropdownMenuItem(
                                         text = { Text(savedSupplier, fontWeight = FontWeight.Medium) },
-                                        leadingIcon = { Icon(Icons.Default.Storefront, null, modifier = Modifier.size(16.dp)) },
+                                        leadingIcon = {
+                                            Icon(
+                                                Icons.Default.Storefront,
+                                                null,
+                                                tint = primaryColor,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        },
                                         onClick = {
                                             supplier = savedSupplier
                                             supplierExpanded = false
@@ -814,522 +900,658 @@ fun TransactionEntryScreen(
                             }
                         }
 
-                        // Quick Supplier Chips
+                        // Quick Supplier Pill Chips (Wrapped cleanly)
                         if (savedSuppliers.isNotEmpty()) {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                savedSuppliers.take(6).forEach { chipSupplier ->
+                                    val isSelected = supplier.equals(chipSupplier, ignoreCase = true)
+                                    Surface(
+                                        onClick = {
+                                            supplier = if (isSelected) "" else chipSupplier
+                                        },
+                                        shape = CircleShape,
+                                        color = if (isSelected) primaryColor.copy(alpha = 0.16f) else inputFieldBg,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) primaryColor else borderColor
+                                        )
+                                    ) {
+                                        Text(
+                                            text = chipSupplier,
+                                            fontSize = 12.sp.scaled,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurface,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // --- 4. TAMBAH ITEM KULAKAN CARD ---
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    color = surfaceColor,
+                    border = BorderStroke(1.dp, borderColor)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(18.dp.scaled),
+                        verticalArrangement = Arrangement.spacedBy(14.dp.scaled)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Tambah Item Kulakan",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 16.5.sp.scaled
+                            )
+                            Surface(
+                                color = primaryColor.copy(alpha = 0.14f),
+                                shape = CircleShape,
+                                border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.25f))
+                            ) {
+                                Text(
+                                    text = "Dukungan 0,5",
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                    fontSize = 11.sp.scaled,
+                                    fontWeight = FontWeight.Bold,
+                                    color = primaryColor
+                                )
+                            }
+                        }
+
+                        // 1. Product Autocomplete Input
+                        ExposedDropdownMenuBox(
+                            expanded = productExpanded,
+                            onExpandedChange = { productExpanded = !productExpanded }
+                        ) {
+                            OutlinedTextField(
+                                value = selectedProduct,
+                                onValueChange = {
+                                    selectedProduct = it
+                                    productExpanded = true
+                                },
+                                placeholder = {
+                                    Text(
+                                        "Nama Produk Tembakau / Barang",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 14.sp.scaled
+                                    )
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Inventory2,
+                                        contentDescription = null,
+                                        tint = primaryColor,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                },
+                                trailingIcon = {
+                                    if (selectedProduct.isNotBlank()) {
+                                        IconButton(onClick = { selectedProduct = "" }) {
+                                            Icon(
+                                                Icons.Default.Clear,
+                                                contentDescription = "Hapus",
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.KeyboardArrowDown,
+                                            contentDescription = "Pilih Produk",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor()
+                                    .testTag("product_name_input"),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryColor,
+                                    unfocusedBorderColor = borderColor,
+                                    focusedContainerColor = inputFieldBg,
+                                    unfocusedContainerColor = inputFieldBg,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+
+                            val matchingProducts = products.filter {
+                                it.name.contains(selectedProduct, ignoreCase = true)
+                            }
+
+                            ExposedDropdownMenu(
+                                expanded = productExpanded && matchingProducts.isNotEmpty(),
+                                onDismissRequest = { productExpanded = false },
+                                modifier = Modifier
+                                    .background(surfaceColor)
+                                    .exposedDropdownSize()
+                            ) {
+                                matchingProducts.forEach { product ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(product.name, fontWeight = FontWeight.SemiBold)
+                                                Text(
+                                                    "Modal: ${currencyFormatter.format(product.price).replace("Rp", "Rp ")} / ${product.unit}",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Inventory2,
+                                                contentDescription = null,
+                                                tint = primaryColor,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            selectedProduct = product.name
+                                            unitPrice = if (product.price > 0) {
+                                                if (product.price % 1.0 == 0.0) product.price.toLong().toString() else product.price.toString()
+                                            } else ""
+
+                                            if (product.unit in unitOptions.filter { it != "Custom" }) {
+                                                selectedUnit = product.unit
+                                                customUnit = ""
+                                            } else {
+                                                selectedUnit = "Custom"
+                                                customUnit = product.unit
+                                            }
+
+                                            productExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        // Quick Product Pill Chips
+                        if (products.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                savedSuppliers.take(6).forEach { chipSupplier ->
-                                    val isSelected = supplier.equals(chipSupplier, ignoreCase = true)
-                                    FilterChip(
-                                        selected = isSelected,
+                                products.take(6).forEach { p ->
+                                    val isSelected = selectedProduct.equals(p.name, ignoreCase = true)
+                                    Surface(
                                         onClick = {
-                                            supplier = if (isSelected) "" else chipSupplier
+                                            if (isSelected) {
+                                                selectedProduct = ""
+                                            } else {
+                                                selectedProduct = p.name
+                                                if (p.price > 0) {
+                                                    unitPrice = if (p.price % 1.0 == 0.0) p.price.toLong().toString() else p.price.toString()
+                                                }
+                                                if (p.unit in unitOptions.filter { it != "Custom" }) {
+                                                    selectedUnit = p.unit
+                                                    customUnit = ""
+                                                } else {
+                                                    selectedUnit = "Custom"
+                                                    customUnit = p.unit
+                                                }
+                                            }
                                         },
-                                        label = { Text(chipSupplier, fontSize = 12.sp) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = primaryColor.copy(alpha = 0.2f),
-                                            selectedLabelColor = primaryColor
+                                        shape = CircleShape,
+                                        color = if (isSelected) primaryColor.copy(alpha = 0.16f) else inputFieldBg,
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (isSelected) primaryColor else borderColor
                                         )
+                                    ) {
+                                        Text(
+                                            text = p.name,
+                                            fontSize = 12.sp.scaled,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Unit Selection Section
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Satuan Unit",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    fontSize = 13.5.sp.scaled
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { showUnitManagement = true }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Settings,
+                                        contentDescription = null,
+                                        tint = primaryColor,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Text(
+                                        text = "Kelola",
+                                        fontSize = 12.sp.scaled,
+                                        fontWeight = FontWeight.Bold,
+                                        color = primaryColor
                                     )
                                 }
                             }
-                        }
-                    }
-                }
-            }
 
-            // --- 4. FORM TAMBAH ITEM KULAKAN (UNIFIED & COMFORTABLE) ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = surfaceColor),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Tambah Item Kulakan",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Surface(
-                            color = primaryColor.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(
-                                text = "Dukungan 0,5",
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = primaryColor
-                            )
-                        }
-                    }
-
-                    // 1. Product Autocomplete Input
-                    ExposedDropdownMenuBox(
-                        expanded = productExpanded,
-                        onExpandedChange = { productExpanded = !productExpanded }
-                    ) {
-                        OutlinedTextField(
-                            value = selectedProduct,
-                            onValueChange = {
-                                selectedProduct = it
-                                productExpanded = true
-                            },
-                            label = { Text("Nama Produk Tembakau / Barang") },
-                            placeholder = { Text("Ketik nama atau pilih dari daftar") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Inventory2,
-                                    contentDescription = null,
-                                    tint = primaryColor,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            },
-                            trailingIcon = {
-                                if (selectedProduct.isNotBlank()) {
-                                    IconButton(onClick = { selectedProduct = "" }) {
-                                        Icon(Icons.Default.Clear, contentDescription = "Hapus", modifier = Modifier.size(18.dp))
-                                    }
-                                } else {
-                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = productExpanded)
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor(),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = primaryColor,
-                                unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                            )
-                        )
-
-                        val matchingProducts = products.filter {
-                            it.name.contains(selectedProduct, ignoreCase = true)
-                        }
-
-                        ExposedDropdownMenu(
-                            expanded = productExpanded && matchingProducts.isNotEmpty(),
-                            onDismissRequest = { productExpanded = false },
-                            modifier = Modifier
-                                .background(surfaceColor)
-                                .exposedDropdownSize()
-                        ) {
-                            matchingProducts.forEach { product ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(product.name, fontWeight = FontWeight.SemiBold)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                unitOptions.forEach { opt ->
+                                    val isSelected = selectedUnit == opt
+                                    Surface(
+                                        onClick = { selectedUnit = opt },
+                                        shape = RoundedCornerShape(12.dp),
+                                        color = if (isSelected) primaryColor else inputFieldBg,
+                                        border = if (isSelected) null else BorderStroke(1.dp, borderColor),
+                                        modifier = Modifier.heightIn(min = 38.dp)
+                                    ) {
+                                        Box(
+                                            contentAlignment = Alignment.Center,
+                                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                        ) {
                                             Text(
-                                                "Modal: ${currencyFormatter.format(product.price).replace("Rp", "Rp ")} / ${product.unit}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                text = opt,
+                                                fontSize = 12.5.sp.scaled,
+                                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                                color = if (isSelected) onPrimaryColor else MaterialTheme.colorScheme.onSurface
                                             )
                                         }
-                                    },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Inventory2,
-                                            contentDescription = null,
-                                            tint = primaryColor,
-                                            modifier = Modifier.size(18.dp)
-                                        )
-                                    },
-                                    onClick = {
-                                        selectedProduct = product.name
-                                        unitPrice = if (product.price > 0) {
-                                            if (product.price % 1.0 == 0.0) product.price.toLong().toString() else product.price.toString()
-                                        } else ""
-
-                                        if (product.unit in unitOptions.filter { it != "Custom" }) {
-                                            selectedUnit = product.unit
-                                            customUnit = ""
-                                        } else {
-                                            selectedUnit = "Custom"
-                                            customUnit = product.unit
-                                        }
-
-                                        productExpanded = false
                                     }
+                                }
+                                val isCustomSelected = selectedUnit == "Custom"
+                                Surface(
+                                    onClick = { selectedUnit = "Custom" },
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (isCustomSelected) primaryColor else inputFieldBg,
+                                    border = if (isCustomSelected) null else BorderStroke(1.dp, borderColor),
+                                    modifier = Modifier.heightIn(min = 38.dp)
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = "Lainnya...",
+                                            fontSize = 12.5.sp.scaled,
+                                            fontWeight = if (isCustomSelected) FontWeight.ExtraBold else FontWeight.SemiBold,
+                                            color = if (isCustomSelected) onPrimaryColor else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (selectedUnit == "Custom") {
+                                OutlinedTextField(
+                                    value = customUnit,
+                                    onValueChange = { customUnit = it },
+                                    placeholder = { Text("Satuan Kustom (contoh: ikat, ball)") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    singleLine = true,
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = primaryColor,
+                                        unfocusedBorderColor = borderColor,
+                                        focusedContainerColor = inputFieldBg,
+                                        unfocusedContainerColor = inputFieldBg
+                                    )
                                 )
                             }
                         }
-                    }
 
-                    // Quick Product Chips
-                    if (products.isNotEmpty()) {
+                        // Side-by-Side Quantity & Price Fields
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedTextField(
+                                value = quantity,
+                                onValueChange = { quantity = it },
+                                placeholder = {
+                                    Text(
+                                        "Jumlah ($activeUnit)",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 13.5.sp.scaled
+                                    )
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("quantity_input"),
+                                shape = RoundedCornerShape(16.dp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Decimal,
+                                    imeAction = ImeAction.Next
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryColor,
+                                    unfocusedBorderColor = borderColor,
+                                    focusedContainerColor = inputFieldBg,
+                                    unfocusedContainerColor = inputFieldBg,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+
+                            OutlinedTextField(
+                                value = unitPrice,
+                                onValueChange = { unitPrice = it },
+                                placeholder = {
+                                    Text(
+                                        "Harga / $activeUnit",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 13.5.sp.scaled
+                                    )
+                                },
+                                prefix = if (unitPrice.isNotEmpty()) {
+                                    { Text("Rp ", fontWeight = FontWeight.Bold, color = primaryColor) }
+                                } else null,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .testTag("unit_price_input"),
+                                shape = RoundedCornerShape(16.dp),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Done
+                                ),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryColor,
+                                    unfocusedBorderColor = borderColor,
+                                    focusedContainerColor = inputFieldBg,
+                                    unfocusedContainerColor = inputFieldBg,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+                        }
+
+                        // Quick Qty Preset Chips & Steppers
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            products.take(6).forEach { p ->
-                                val isSelected = selectedProduct.equals(p.name, ignoreCase = true)
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = {
-                                        if (isSelected) {
-                                            selectedProduct = ""
-                                        } else {
-                                            selectedProduct = p.name
-                                            if (p.price > 0) {
-                                                unitPrice = if (p.price % 1.0 == 0.0) p.price.toLong().toString() else p.price.toString()
-                                            }
-                                            if (p.unit in unitOptions.filter { it != "Custom" }) {
-                                                selectedUnit = p.unit
-                                                customUnit = ""
-                                            } else {
-                                                selectedUnit = "Custom"
-                                                customUnit = p.unit
-                                            }
-                                        }
-                                    },
-                                    label = { Text(p.name, fontSize = 11.sp) },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = primaryColor.copy(alpha = 0.2f),
-                                        selectedLabelColor = primaryColor
-                                    )
-                                )
-                            }
-                        }
-                    }
-
-                    // Unit Selection Chips
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Satuan Unit",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                text = "Jumlah:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 12.sp.scaled
                             )
-                            TextButton(
-                                onClick = { showUnitManagement = true },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
-                            ) {
-                                Icon(Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(12.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text("Kelola", fontSize = 11.sp)
+                            listOf(0.5, 1.0, 2.0, 5.0, 10.0, 25.0).forEach { presetVal ->
+                                val label = if (presetVal == 0.5) "0,5" else "+${presetVal.toLong()}"
+                                val isHalf = presetVal == 0.5
+                                Surface(
+                                    onClick = {
+                                        val current = quantity.toDoubleOrNull() ?: 0.0
+                                        val next = if (isHalf && current == 0.0) 0.5 else current + presetVal
+                                        quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
+                                    },
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = primaryColor.copy(alpha = 0.14f),
+                                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.24f)),
+                                    modifier = Modifier.heightIn(min = 34.dp)
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            fontSize = 12.sp.scaled,
+                                            fontWeight = FontWeight.Bold,
+                                            color = primaryColor
+                                        )
+                                    }
+                                }
                             }
-                        }
 
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            unitOptions.forEach { opt ->
-                                val isSelected = selectedUnit == opt
-                                FilterChip(
-                                    selected = isSelected,
-                                    onClick = { selectedUnit = opt },
-                                    label = { Text(opt, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = FilterChipDefaults.filterChipColors(
-                                        selectedContainerColor = primaryColor,
-                                        selectedLabelColor = Color.White
-                                    )
-                                )
-                            }
-                            FilterChip(
-                                selected = selectedUnit == "Custom",
-                                onClick = { selectedUnit = "Custom" },
-                                label = { Text("Lainnya...", fontSize = 11.sp) },
-                                shape = RoundedCornerShape(8.dp),
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = primaryColor,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-
-                        if (selectedUnit == "Custom") {
-                            OutlinedTextField(
-                                value = customUnit,
-                                onValueChange = { customUnit = it },
-                                label = { Text("Satuan Kustom (contoh: ikat, ball)") },
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(12.dp),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
-                            )
-                        }
-                    }
-
-                    // Side-by-Side Quantity & Price Fields
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        OutlinedTextField(
-                            value = quantity,
-                            onValueChange = { quantity = it },
-                            label = { Text("Jumlah ($activeUnit)") },
-                            placeholder = { Text("0.5 / 1") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(14.dp),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Decimal,
-                                imeAction = ImeAction.Next
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
-                        )
-
-                        OutlinedTextField(
-                            value = unitPrice,
-                            onValueChange = { unitPrice = it },
-                            label = { Text("Harga / $activeUnit") },
-                            placeholder = { Text("85000") },
-                            prefix = { Text("Rp ", fontWeight = FontWeight.Bold, color = primaryColor) },
-                            modifier = Modifier.weight(1.3f),
-                            shape = RoundedCornerShape(14.dp),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number,
-                                imeAction = ImeAction.Done
-                            ),
-                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = primaryColor)
-                        )
-                    }
-
-                    // Quick Qty Preset Chips & Steppers
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Jumlah:",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        listOf(0.5, 1.0, 2.0, 5.0, 10.0, 25.0).forEach { presetVal ->
-                            val label = if (presetVal == 0.5) "0,5" else "+${presetVal.toLong()}"
-                            val isHalf = presetVal == 0.5
-                            FilledTonalButton(
-                                onClick = {
-                                    val current = quantity.toDoubleOrNull() ?: 0.0
-                                    val next = if (isHalf && current == 0.0) 0.5 else current + presetVal
-                                    quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
-                                },
-                                shape = RoundedCornerShape(8.dp),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                modifier = Modifier.height(30.dp),
-                                colors = ButtonDefaults.filledTonalButtonColors(
-                                    containerColor = primaryColor.copy(alpha = 0.15f),
-                                    contentColor = primaryColor
-                                )
-                            ) {
-                                Text(label, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // Steppers
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            FilledTonalIconButton(
+                            // ±0.5 Steppers
+                            Surface(
                                 onClick = {
                                     val current = quantity.toDoubleOrNull() ?: 0.0
                                     val next = (current - 0.5).coerceAtLeast(0.0)
                                     quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
                                 },
-                                modifier = Modifier.size(30.dp),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(10.dp),
+                                color = inputFieldBg,
+                                border = BorderStroke(1.dp, borderColor),
+                                modifier = Modifier.size(34.dp)
                             ) {
-                                Icon(Icons.Default.Remove, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Remove,
+                                        contentDescription = "Kurangi 0,5",
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
-                            FilledTonalIconButton(
+                            Surface(
                                 onClick = {
                                     val current = quantity.toDoubleOrNull() ?: 0.0
                                     val next = current + 0.5
                                     quantity = if (next % 1.0 == 0.0) next.toLong().toString() else String.format(Locale.US, "%.1f", next)
                                 },
-                                modifier = Modifier.size(30.dp),
-                                shape = RoundedCornerShape(8.dp)
+                                shape = RoundedCornerShape(10.dp),
+                                color = inputFieldBg,
+                                border = BorderStroke(1.dp, borderColor),
+                                modifier = Modifier.size(34.dp)
                             ) {
-                                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        Icons.Default.Add,
+                                        contentDescription = "Tambah 0,5",
+                                        tint = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             }
-                        }
 
-                        TextButton(
-                            onClick = { quantity = "" },
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp),
-                            modifier = Modifier.height(30.dp)
-                        ) {
-                            Text("Reset", fontSize = 11.sp, color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-
-                    // Price helper
-                    if (matchedProduct != null && matchedProduct.price > 0 && unitPrice != matchedProduct.price.toLong().toString()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "Harga Master: ${currencyFormatter.format(matchedProduct.price).replace("Rp", "Rp ")}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                             TextButton(
-                                onClick = {
-                                    unitPrice = if (matchedProduct.price % 1.0 == 0.0) {
-                                        matchedProduct.price.toLong().toString()
-                                    } else matchedProduct.price.toString()
-                                },
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                onClick = { quantity = "" },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(34.dp)
                             ) {
-                                Text("Gunakan Harga Master", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                Text("Reset", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
                             }
                         }
-                    }
 
-                    Spacer(Modifier.height(4.dp))
-
-                    // Add to List Button
-                    Button(
-                        onClick = {
-                            if (selectedProduct.isNotBlank() && parsedQty > 0 && parsedPrice >= 0) {
-                                val newItem = ManualCartItem(
-                                    productName = selectedProduct.trim(),
-                                    quantity = parsedQty,
-                                    unitPrice = parsedPrice,
-                                    unit = activeUnit
+                        // Master Price Helper
+                        if (matchedProduct != null && matchedProduct.price > 0 && unitPrice != matchedProduct.price.toLong().toString()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "Harga Master: ${currencyFormatter.format(matchedProduct.price).replace("Rp", "Rp ")}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                manualItemsList = manualItemsList + newItem
-                                selectedProduct = ""
-                                quantity = ""
-                                unitPrice = ""
-                                Toast.makeText(context, "Item ditambahkan ke daftar kulakan", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "Lengkapi nama produk, jumlah, dan harga terlebih dahulu", Toast.LENGTH_SHORT).show()
+                                TextButton(
+                                    onClick = {
+                                        unitPrice = if (matchedProduct.price % 1.0 == 0.0) {
+                                            matchedProduct.price.toLong().toString()
+                                        } else matchedProduct.price.toString()
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text("Gunakan Harga Master", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
                             }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(50.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = primaryColor)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Tambah ke Daftar Kulakan", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.White)
+                        }
+
+                        // Add to List Button
+                        Button(
+                            onClick = {
+                                if (selectedProduct.isNotBlank() && parsedQty > 0 && parsedPrice >= 0) {
+                                    val newItem = ManualCartItem(
+                                        productName = selectedProduct.trim(),
+                                        quantity = parsedQty,
+                                        unitPrice = parsedPrice,
+                                        unit = activeUnit
+                                    )
+                                    manualItemsList = manualItemsList + newItem
+                                    selectedProduct = ""
+                                    quantity = ""
+                                    unitPrice = ""
+                                    Toast.makeText(context, "Item ditambahkan ke daftar kulakan", Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, "Lengkapi nama produk, jumlah, dan harga terlebih dahulu", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(50.dp)
+                                .testTag("add_to_cart_button"),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = primaryColor,
+                                contentColor = onPrimaryColor
+                            )
+                        ) {
+                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(19.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                text = "Tambah ke Daftar Kulakan",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 14.5.sp.scaled
+                            )
+                        }
                     }
                 }
-            }
 
-            // --- 5.1 MULTI-ITEM CART LIST ---
-            if (manualItemsList.isNotEmpty()) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = surfaceColor),
-                    border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
-                ) {
-                    Column(
-                        modifier = Modifier.padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                // --- 5. MULTI-ITEM CART LIST ---
+                if (manualItemsList.isNotEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        color = surfaceColor,
+                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.35f))
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                        Column(
+                            modifier = Modifier.padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .background(primaryColor, shape = CircleShape)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "DAFTAR BARANG KULAKAN (${manualItemsList.size})",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = primaryColor,
-                                    letterSpacing = 1.sp
-                                )
-                            }
-                            TextButton(onClick = { manualItemsList = emptyList() }) {
-                                Text("Hapus Semua", fontSize = 11.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        manualItemsList.forEach { cartItem ->
-                            Surface(
-                                color = surfaceVariant.copy(alpha = 0.35f),
-                                shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier.fillMaxWidth()
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = cartItem.productName,
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 15.sp,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Spacer(Modifier.height(3.dp))
-                                        Text(
-                                            text = "${cartItem.quantity} ${cartItem.unit} × ${currencyFormatter.format(cartItem.unitPrice).replace("Rp", "Rp ")}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .background(primaryColor, shape = CircleShape)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = "DAFTAR BARANG KULAKAN (${manualItemsList.size})",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = primaryColor,
+                                        letterSpacing = 1.sp
+                                    )
+                                }
+                                TextButton(onClick = { manualItemsList = emptyList() }) {
+                                    Text("Hapus Semua", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
 
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(
-                                            text = currencyFormatter.format(cartItem.quantity * cartItem.unitPrice).replace("Rp", "Rp "),
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 14.sp,
-                                            color = primaryColor
-                                        )
-                                        Spacer(Modifier.width(10.dp))
-                                        IconButton(
-                                            onClick = { manualItemsList = manualItemsList.filter { it.id != cartItem.id } },
-                                            modifier = Modifier.size(32.dp)
-                                        ) {
-                                            Icon(
-                                                Icons.Default.Clear,
-                                                contentDescription = "Hapus",
-                                                tint = MaterialTheme.colorScheme.error,
-                                                modifier = Modifier.size(18.dp)
+                            manualItemsList.forEach { cartItem ->
+                                Surface(
+                                    color = inputFieldBg,
+                                    shape = RoundedCornerShape(14.dp),
+                                    border = BorderStroke(1.dp, borderColor),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = cartItem.productName,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
+                                            Spacer(Modifier.height(3.dp))
+                                            Text(
+                                                text = "${cartItem.quantity} ${cartItem.unit} × ${currencyFormatter.format(cartItem.unitPrice).replace("Rp", "Rp ")}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = currencyFormatter.format(cartItem.quantity * cartItem.unitPrice).replace("Rp", "Rp "),
+                                                fontWeight = FontWeight.Black,
+                                                fontSize = 14.sp,
+                                                color = primaryColor
+                                            )
+                                            Spacer(Modifier.width(10.dp))
+                                            IconButton(
+                                                onClick = { manualItemsList = manualItemsList.filter { it.id != cartItem.id } },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Clear,
+                                                    contentDescription = "Hapus",
+                                                    tint = MaterialTheme.colorScheme.error,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1337,70 +1559,77 @@ fun TransactionEntryScreen(
                         }
                     }
                 }
-            }
 
-            // --- 6. ADVANCED SCANNER & DEBUG ACCORDION ---
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = surfaceVariant.copy(alpha = 0.35f)
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
-            ) {
-                Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Tune,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(Modifier.width(10.dp))
-                            Column {
-                                Text(
-                                    text = "Mode Debug Kamera & Log",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold
+                // --- 6. MODE DEBUG KAMERA & LOG ---
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    color = surfaceColor,
+                    border = BorderStroke(1.dp, borderColor)
+                ) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                Text(
-                                    text = "Tampilkan detail log pembacaan OCR nota",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                                Spacer(Modifier.width(12.dp))
+                                Column {
+                                    Text(
+                                        text = "Mode Debug Kamera & Log",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontSize = 13.5.sp.scaled
+                                    )
+                                    Text(
+                                        text = "Tampilkan detail log pembacaan OCR nota",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.5.sp.scaled
+                                    )
+                                }
                             }
+
+                            Spacer(Modifier.width(10.dp))
+
+                            Switch(
+                                checked = isCameraDebugEnabled,
+                                onCheckedChange = { isCameraDebugEnabled = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = onPrimaryColor,
+                                    checkedTrackColor = primaryColor,
+                                    uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    uncheckedTrackColor = inputFieldBg,
+                                    uncheckedBorderColor = borderColor
+                                )
+                            )
                         }
 
-                        Switch(
-                            checked = isCameraDebugEnabled,
-                            onCheckedChange = { isCameraDebugEnabled = it },
-                            colors = SwitchDefaults.colors(
-                                checkedThumbColor = primaryColor,
-                                checkedTrackColor = primaryColor.copy(alpha = 0.3f)
-                            )
-                        )
-                    }
-
-                    if (latestScannerReport != null) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        TextButton(
-                            onClick = { showScannerDebug = true },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Icon(Icons.Default.DocumentScanner, null, modifier = Modifier.size(16.dp))
-                            Spacer(Modifier.width(6.dp))
-                            Text("Buka Laporan Terakhir Hasil Scan", fontSize = 12.sp)
+                        if (latestScannerReport != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(
+                                onClick = { showScannerDebug = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.DocumentScanner, null, modifier = Modifier.size(16.dp))
+                                Spacer(Modifier.width(6.dp))
+                                Text("Buka Laporan Terakhir Hasil Scan", fontSize = 12.sp)
+                            }
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(80.dp)) // Clearance for floating bottom bar
         }
     }
 
@@ -1408,6 +1637,7 @@ fun TransactionEntryScreen(
     if (isGalleryScanning) {
         AlertDialog(
             onDismissRequest = {},
+            containerColor = surfaceColor,
             title = { Text("Membaca Nota Galeri...", fontWeight = FontWeight.Bold) },
             text = {
                 Row(
@@ -1459,6 +1689,7 @@ fun TransactionEntryScreen(
     if (showScannerDebug) {
         AlertDialog(
             onDismissRequest = { showScannerDebug = false },
+            containerColor = surfaceColor,
             title = { Text("Log Debug Camera", fontWeight = FontWeight.Bold) },
             text = {
                 Column(

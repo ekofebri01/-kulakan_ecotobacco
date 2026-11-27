@@ -14,7 +14,7 @@ data class UiConfig(
     val cornerRadius: Int = 16,
     val customTextColor: Int = 0,
     val customBackgroundColor: Int = 0,
-    val showMatrixBackground: Boolean = true
+    val showMatrixBackground: Boolean = false
 )
 
 val LocalUiConfig = staticCompositionLocalOf { UiConfig() }

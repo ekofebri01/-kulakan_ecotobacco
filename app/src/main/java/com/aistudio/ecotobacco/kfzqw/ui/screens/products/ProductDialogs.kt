@@ -2,11 +2,10 @@ package com.aistudio.ecotobacco.kfzqw.ui.screens.products
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.material3.Surface
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -14,14 +13,19 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -31,11 +35,12 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -45,11 +50,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.aistudio.ecotobacco.kfzqw.data.local.entities.ProductEntity
 import com.aistudio.ecotobacco.kfzqw.ui.components.UnitManagementDialog
@@ -65,7 +75,7 @@ fun AddProductDialog(
     onUpdateCustomUnit: (String, String) -> Unit,
     onDeleteCustomUnit: (String) -> Unit,
     onAddCustomSubCategory: (String) -> Unit = {},
-    onDismiss: () -> Unit, 
+    onDismiss: () -> Unit,
     onAdd: (String, Double, String, Double, String, Double, String, String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
@@ -73,7 +83,7 @@ fun AddProductDialog(
     var sellingPriceStr by remember { mutableStateOf("") }
     var contentQtyStr by remember { mutableStateOf("1") }
     var subCategory by remember { mutableStateOf("Tembakau") }
-    var category by remember { mutableStateOf("") }
+    val category = ""
 
     var selectedUnit by remember { mutableStateOf("kg") }
     var selectedSellingUnit by remember { mutableStateOf("pcs") }
@@ -82,362 +92,474 @@ fun AddProductDialog(
     var unitExpanded by remember { mutableStateOf(false) }
     var sellingUnitExpanded by remember { mutableStateOf(false) }
     var showUnitManagement by remember { mutableStateOf(false) }
-    var showDeleteConfirmation by remember { mutableStateOf(false) }
 
-    AlertDialog(
+    val primaryColor = MaterialTheme.colorScheme.primary
+    val onPrimaryColor = MaterialTheme.colorScheme.onPrimary
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
+    val isDarkSurface = MaterialTheme.colorScheme.background.luminance() < 0.45f
+    val inputBg = if (isDarkSurface) Color(0xFF101513) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+
+    val fieldColors = OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = primaryColor,
+        unfocusedBorderColor = borderColor,
+        focusedContainerColor = inputBg,
+        unfocusedContainerColor = inputBg,
+        focusedTextColor = MaterialTheme.colorScheme.onSurface,
+        unfocusedTextColor = MaterialTheme.colorScheme.onSurface
+    )
+
+    val cost = priceStr.toDoubleOrNull() ?: 0.0
+    val sell = sellingPriceStr.toDoubleOrNull() ?: 0.0
+    val contentQty = contentQtyStr.toDoubleOrNull() ?: 1.0
+    val costPerSellingUnit = if (contentQty > 0) cost / contentQty else 0.0
+    val marginPerSellingUnit = sell - costPerSellingUnit
+    val profitPercent = if (costPerSellingUnit > 0) (marginPerSellingUnit / costPerSellingUnit) * 100 else 0.0
+    val sellingUnitDisplay = if (selectedSellingUnit == "Custom") customSellingUnit.ifBlank { "unit" } else selectedSellingUnit
+
+    val currencyFormatter = remember {
+        NumberFormat.getCurrencyInstance(Locale.forLanguageTag("id-ID")).apply {
+            maximumFractionDigits = 0
+        }
+    }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(decorFitsSystemWindows = false),
-        modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars).imePadding(),
-        title = { Text("TAMBAH PRODUK BARU", fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp, color = MaterialTheme.colorScheme.onSurface) },
-        containerColor = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(24.dp),
-        text = {
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 520.dp)
+                .windowInsetsPadding(WindowInsets.systemBars)
+                .imePadding()
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = surfaceColor,
+            border = BorderStroke(1.dp, borderColor),
+            tonalElevation = 6.dp,
+            shadowElevation = 16.dp
+        ) {
             Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                // Sisakan ruang agar tombol Kelola Satuan tidak tertutup tombol aksi dialog.
                 modifier = Modifier
-                    .padding(bottom = 88.dp)
-                    .verticalScroll(rememberScrollState())
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text("Nama Produk") },
+                // Header Row
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
-                )
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Tambah Produk Baru",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 18.sp,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Surface(
+                        onClick = { showUnitManagement = true },
+                        shape = CircleShape,
+                        color = primaryColor.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, primaryColor.copy(alpha = 0.25f)),
+                        modifier = Modifier.testTag("add_product_manage_units_button")
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = "Kelola Satuan",
+                                tint = primaryColor,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Text(
+                                text = "Satuan",
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = primaryColor
+                            )
+                        }
+                    }
+                }
 
-                OutlinedTextField(
-                    value = subCategory,
-                    onValueChange = { subCategory = it },
-                    label = { Text("Sub Kategori (Contoh: Tembakau, Alat, Papir, dll)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary),
-                    supportingText = { Text("Misal: Tembakau, Tembakau Kemasan, Alat, Papir, dll.") }
-                )
+                // Body (fits without scrolling in normal portrait; scroll fallback only for tiny screens / keyboard)
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Nama Produk", maxLines = 1) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("add_product_name_input"),
+                        shape = RoundedCornerShape(14.dp),
+                        singleLine = true,
+                        colors = fieldColors
+                    )
 
-                if (subCategoryOptions.isNotEmpty()) {
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            text = "Sub Kategori Tersimpan:",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(bottom = 4.dp)
-                        )
+                    OutlinedTextField(
+                        value = subCategory,
+                        onValueChange = { subCategory = it },
+                        label = { Text("Sub Kategori", maxLines = 1) },
+                        placeholder = { Text("Tembakau, Alat, Papir...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("add_product_subcategory_input"),
+                        shape = RoundedCornerShape(14.dp),
+                        singleLine = true,
+                        colors = fieldColors
+                    )
+
+                    if (subCategoryOptions.isNotEmpty()) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             subCategoryOptions.forEach { option ->
                                 val isSelected = subCategory.equals(option, ignoreCase = true)
                                 Surface(
                                     onClick = { subCategory = option },
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    border = BorderStroke(1.dp, if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                                    shape = CircleShape,
+                                    color = if (isSelected) primaryColor.copy(alpha = 0.16f) else inputBg,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isSelected) primaryColor else borderColor
+                                    )
                                 ) {
                                     Text(
                                         text = option,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = 11.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) primaryColor else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        modifier = Modifier.padding(horizontal = 11.dp, vertical = 5.dp)
                                     )
                                 }
                             }
                         }
                     }
-                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    OutlinedTextField(
-                        value = priceStr,
-                        onValueChange = { priceStr = it },
-                        label = { Text("Harga Kulakan") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
-                    )
-
-                    OutlinedTextField(
-                        value = sellingPriceStr,
-                        onValueChange = { sellingPriceStr = it },
-                        label = { Text("Harga Jual") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary)
-                    )
-                }
-
-                OutlinedTextField(
-                    value = contentQtyStr,
-                    onValueChange = { contentQtyStr = it },
-                    label = { Text("Isi per Satuan Beli (Contoh: 10)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = MaterialTheme.colorScheme.primary),
-                    supportingText = { Text("Misal: Beli 1 Pak isi 10 Pcs, maka isi 10") }
-                )
-
-                // Profit Estimation
-                val cost = priceStr.toDoubleOrNull() ?: 0.0
-                val sell = sellingPriceStr.toDoubleOrNull() ?: 0.0
-                val contentQty = contentQtyStr.toDoubleOrNull() ?: 1.0
-                
-                val costPerSellingUnit = if (contentQty > 0) cost / contentQty else 0.0
-                val marginPerSellingUnit = sell - costPerSellingUnit
-                val profitPercent = if (costPerSellingUnit > 0) (marginPerSellingUnit / costPerSellingUnit) * 100 else 0.0
-                
-                val currencyFormatter = remember {
-                    NumberFormat.getCurrencyInstance(Locale.forLanguageTag("id-ID")).apply {
-                        maximumFractionDigits = 0
-                    }
-                }
-
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.12f) else Color(0xFFFF3366).copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.45f) else Color(0xFFFF3366).copy(alpha = 0.45f)),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                    // Row: Harga Kulakan | Harga Jual
                     Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(14.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column {
-                            Text(
-                                text = "ESTIMASI LABA PER $selectedSellingUnit",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = 0.6.sp,
-                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366)
-                            )
-                            Text(
-                                text = currencyFormatter.format(marginPerSellingUnit).replace("Rp", "Rp "),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366)
-                            )
-                            if (contentQty > 1) {
-                                Text(
-                                    text = "Modal: ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")} / $selectedSellingUnit",
-                                    fontSize = 11.sp,
-                                    color = Color(0xFF94A3B8)
-                                )
-                            }
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87).copy(alpha = 0.2f) else Color(0xFFFF3366).copy(alpha = 0.2f),
-                            border = BorderStroke(1.dp, if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366))
-                        ) {
-                            Text(
-                                text = String.format(Locale.US, "%.1f%%", profitPercent),
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Black,
-                                color = if (marginPerSellingUnit >= 0) Color(0xFF00FF87) else Color(0xFFFF3366),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Purchase Unit
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ExposedDropdownMenuBox(
-                        expanded = unitExpanded,
-                        onExpandedChange = { unitExpanded = !unitExpanded },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         OutlinedTextField(
-                            value = selectedUnit,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Satuan Beli") },
+                            value = priceStr,
+                            onValueChange = { priceStr = it },
+                            label = { Text("Harga Kulakan", fontSize = 12.sp, maxLines = 1, softWrap = false) },
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor(),
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded)
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
-                            )
+                                .weight(1f)
+                                .testTag("add_product_cost_input"),
+                            shape = RoundedCornerShape(14.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = fieldColors
                         )
-                        ExposedDropdownMenu(
+
+                        OutlinedTextField(
+                            value = sellingPriceStr,
+                            onValueChange = { sellingPriceStr = it },
+                            label = { Text("Harga Jual", fontSize = 12.sp, maxLines = 1, softWrap = false) },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("add_product_sell_input"),
+                            shape = RoundedCornerShape(14.dp),
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = fieldColors
+                        )
+                    }
+
+                    // Row: Satuan Beli | Satuan Jual | Isi per Beli
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ExposedDropdownMenuBox(
                             expanded = unitExpanded,
-                            onDismissRequest = { unitExpanded = false },
-                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            onExpandedChange = { unitExpanded = !unitExpanded },
+                            modifier = Modifier.weight(1f)
                         ) {
-                            unitOptions.forEach { option ->
+                            OutlinedTextField(
+                                value = selectedUnit,
+                                onValueChange = {},
+                                readOnly = true,
+                                singleLine = true,
+                                label = { Text("Sat. Beli", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(),
+                                shape = RoundedCornerShape(14.dp),
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = unitExpanded)
+                                },
+                                colors = fieldColors
+                            )
+                            ExposedDropdownMenu(
+                                expanded = unitExpanded,
+                                onDismissRequest = { unitExpanded = false },
+                                modifier = Modifier.background(surfaceColor)
+                            ) {
+                                unitOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option) },
+                                        onClick = {
+                                            selectedUnit = option
+                                            unitExpanded = false
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
-                                    text = { Text(option) },
+                                    text = { Text("Custom", color = primaryColor, fontWeight = FontWeight.Bold) },
                                     onClick = {
-                                        selectedUnit = option
+                                        selectedUnit = "Custom"
                                         unitExpanded = false
                                     }
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text("Custom", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) },
-                                onClick = {
-                                    selectedUnit = "Custom"
-                                    unitExpanded = false
-                                }
-                            )
                         }
-                    }
 
-                    if (selectedUnit == "Custom") {
-                        OutlinedTextField(
-                            value = customUnit,
-                            onValueChange = { customUnit = it },
-                            label = { Text("Unit Baru") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-                }
-
-                // Selling Unit
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    ExposedDropdownMenuBox(
-                        expanded = sellingUnitExpanded,
-                        onExpandedChange = { sellingUnitExpanded = !sellingUnitExpanded },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        OutlinedTextField(
-                            value = selectedSellingUnit,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Satuan Jual") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .menuAnchor(),
-                            trailingIcon = {
-                                ExposedDropdownMenuDefaults.TrailingIcon(expanded = sellingUnitExpanded)
-                            },
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                        ExposedDropdownMenu(
+                        ExposedDropdownMenuBox(
                             expanded = sellingUnitExpanded,
-                            onDismissRequest = { sellingUnitExpanded = false },
-                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                            onExpandedChange = { sellingUnitExpanded = !sellingUnitExpanded },
+                            modifier = Modifier.weight(1f)
                         ) {
-                            unitOptions.forEach { option ->
+                            OutlinedTextField(
+                                value = selectedSellingUnit,
+                                onValueChange = {},
+                                readOnly = true,
+                                singleLine = true,
+                                label = { Text("Sat. Jual", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .menuAnchor(),
+                                shape = RoundedCornerShape(14.dp),
+                                trailingIcon = {
+                                    ExposedDropdownMenuDefaults.TrailingIcon(expanded = sellingUnitExpanded)
+                                },
+                                colors = fieldColors
+                            )
+                            ExposedDropdownMenu(
+                                expanded = sellingUnitExpanded,
+                                onDismissRequest = { sellingUnitExpanded = false },
+                                modifier = Modifier.background(surfaceColor)
+                            ) {
+                                unitOptions.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = { Text(option) },
+                                        onClick = {
+                                            selectedSellingUnit = option
+                                            sellingUnitExpanded = false
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
-                                    text = { Text(option) },
+                                    text = { Text("Custom", color = primaryColor, fontWeight = FontWeight.Bold) },
                                     onClick = {
-                                        selectedSellingUnit = option
+                                        selectedSellingUnit = "Custom"
                                         sellingUnitExpanded = false
                                     }
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text("Custom", color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold) },
-                                onClick = {
-                                    selectedSellingUnit = "Custom"
-                                    sellingUnitExpanded = false
-                                }
-                            )
                         }
-                    }
 
-                    if (selectedSellingUnit == "Custom") {
                         OutlinedTextField(
-                            value = customSellingUnit,
-                            onValueChange = { customSellingUnit = it },
-                            label = { Text("Unit Baru") },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(12.dp),
+                            value = contentQtyStr,
+                            onValueChange = { contentQtyStr = it },
+                            label = { Text("Isi / Beli", fontSize = 11.sp, maxLines = 1, softWrap = false) },
+                            modifier = Modifier
+                                .weight(0.75f)
+                                .testTag("add_product_content_qty_input"),
+                            shape = RoundedCornerShape(14.dp),
                             singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = MaterialTheme.colorScheme.primary
-                            )
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            colors = fieldColors
                         )
                     }
-                }
 
-                TextButton(
-                    onClick = { showUnitManagement = true },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Icon(Icons.Default.Settings, null, modifier = Modifier.size(16.dp))
-                    Spacer(Modifier.size(4.dp))
-                    Text("Kelola Satuan", style = MaterialTheme.typography.labelMedium)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val price = priceStr.toDoubleOrNull() ?: 0.0
-                    val sellingPrice = sellingPriceStr.toDoubleOrNull() ?: 0.0
-                    val contentQty = contentQtyStr.toDoubleOrNull() ?: 1.0
-                    if (name.isNotBlank()) {
-                        val finalUnit = if (selectedUnit == "Custom") {
-                            val trimmed = customUnit.trim()
-                            if (trimmed.isNotBlank()) {
-                                onAddCustomUnit(trimmed)
-                                trimmed
-                            } else "unit"
-                        } else selectedUnit
-
-                        val finalSellingUnit = if (selectedSellingUnit == "Custom") {
-                            val trimmed = customSellingUnit.trim()
-                            if (trimmed.isNotBlank()) {
-                                onAddCustomUnit(trimmed)
-                                trimmed
-                            } else "unit"
-                        } else selectedSellingUnit
-
-                        val finalSubCat = subCategory.trim().ifBlank { "Umum" }
-                        if (finalSubCat.isNotBlank() && finalSubCat != "Umum") {
-                            onAddCustomSubCategory(finalSubCat)
+                    if (selectedUnit == "Custom" || selectedSellingUnit == "Custom") {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (selectedUnit == "Custom") {
+                                OutlinedTextField(
+                                    value = customUnit,
+                                    onValueChange = { customUnit = it },
+                                    label = { Text("Sat. Beli Baru", fontSize = 11.sp, maxLines = 1) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    singleLine = true,
+                                    colors = fieldColors
+                                )
+                            }
+                            if (selectedSellingUnit == "Custom") {
+                                OutlinedTextField(
+                                    value = customSellingUnit,
+                                    onValueChange = { customSellingUnit = it },
+                                    label = { Text("Sat. Jual Baru", fontSize = 11.sp, maxLines = 1) },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(14.dp),
+                                    singleLine = true,
+                                    colors = fieldColors
+                                )
+                            }
                         }
-
-                        onAdd(name, price, finalUnit, sellingPrice, finalSellingUnit, contentQty, category, finalSubCat)
                     }
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Text("Simpan", fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Batal", color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                    // Compact Live Profit Estimation Banner
+                    val profitTone = if (marginPerSellingUnit >= 0) primaryColor else MaterialTheme.colorScheme.error
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = profitTone.copy(alpha = 0.12f),
+                        border = BorderStroke(1.dp, profitTone.copy(alpha = 0.35f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "ESTIMASI LABA PER $sellingUnitDisplay",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.6.sp,
+                                    color = profitTone
+                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = currencyFormatter.format(marginPerSellingUnit).replace("Rp", "Rp "),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = profitTone
+                                    )
+                                    if (contentQty > 1) {
+                                        Text(
+                                            text = "(Modal ${currencyFormatter.format(costPerSellingUnit).replace("Rp", "Rp ")}/$sellingUnitDisplay)",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = profitTone.copy(alpha = 0.18f),
+                                border = BorderStroke(1.dp, profitTone.copy(alpha = 0.6f))
+                            ) {
+                                Text(
+                                    text = String.format(Locale.US, "%.1f%%", profitPercent),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = profitTone,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Pinned Footer Actions
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        shape = RoundedCornerShape(14.dp),
+                        border = BorderStroke(1.dp, borderColor),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("add_product_cancel_button")
+                    ) {
+                        Text(
+                            text = "Batal",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            val price = priceStr.toDoubleOrNull() ?: 0.0
+                            val sellingPrice = sellingPriceStr.toDoubleOrNull() ?: 0.0
+                            val contentQtyVal = contentQtyStr.toDoubleOrNull() ?: 1.0
+                            if (name.isNotBlank()) {
+                                val finalUnit = if (selectedUnit == "Custom") {
+                                    val trimmed = customUnit.trim()
+                                    if (trimmed.isNotBlank()) {
+                                        onAddCustomUnit(trimmed)
+                                        trimmed
+                                    } else "unit"
+                                } else selectedUnit
+
+                                val finalSellingUnit = if (selectedSellingUnit == "Custom") {
+                                    val trimmed = customSellingUnit.trim()
+                                    if (trimmed.isNotBlank()) {
+                                        onAddCustomUnit(trimmed)
+                                        trimmed
+                                    } else "unit"
+                                } else selectedSellingUnit
+
+                                val finalSubCat = subCategory.trim().ifBlank { "Umum" }
+                                if (finalSubCat.isNotBlank() && finalSubCat != "Umum") {
+                                    onAddCustomSubCategory(finalSubCat)
+                                }
+
+                                onAdd(name, price, finalUnit, sellingPrice, finalSellingUnit, contentQtyVal, category, finalSubCat)
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = primaryColor,
+                            contentColor = onPrimaryColor
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1.35f)
+                            .height(48.dp)
+                            .testTag("add_product_save_button")
+                    ) {
+                        Text("Simpan", fontWeight = FontWeight.ExtraBold, fontSize = 14.5.sp)
+                    }
+                }
             }
         }
-    )
+    }
 
     if (showUnitManagement) {
         UnitManagementDialog(

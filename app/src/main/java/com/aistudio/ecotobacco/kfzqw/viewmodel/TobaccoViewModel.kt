@@ -108,7 +108,7 @@ class TobaccoViewModel(
     private val RISC_STATUS_URL = "https://your-risc-backend.com/risc/status"
 
     // --- Theme Settings ---
-    private val _themeMode = MutableStateFlow(appPrefs.getString("theme_mode", "SYSTEM") ?: "SYSTEM")
+    private val _themeMode = MutableStateFlow(appPrefs.getString("theme_mode", "DARK") ?: "DARK")
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
     private val _defaultReportFilter = MutableStateFlow(
@@ -116,7 +116,7 @@ class TobaccoViewModel(
     )
     val defaultReportFilter: StateFlow<String> = _defaultReportFilter.asStateFlow()
 
-    private val _customColor = MutableStateFlow(appPrefs?.getInt("custom_color", 0xFF10B981.toInt()) ?: 0xFF10B981.toInt())
+    private val _customColor = MutableStateFlow(appPrefs?.getInt("custom_color", 0xFF34D399.toInt()) ?: 0xFF34D399.toInt())
     val customColor: StateFlow<Int> = _customColor.asStateFlow()
 
     private val _customUnits = MutableStateFlow(appPrefs?.getStringSet("custom_units", setOf("kg", "ons", "pcs"))?.toList()?.sorted() ?: listOf("kg", "ons", "pcs"))
@@ -175,7 +175,7 @@ class TobaccoViewModel(
     private val _customBackgroundColor = MutableStateFlow(appPrefs.getInt("ui_custom_bg_color", 0)) // 0 means use theme default
     val customBackgroundColor = _customBackgroundColor.asStateFlow()
 
-    private val _showMatrixBackground = MutableStateFlow(appPrefs.getBoolean("ui_show_matrix_bg", true))
+    private val _showMatrixBackground = MutableStateFlow(appPrefs.getBoolean("ui_show_matrix_bg", false))
     val showMatrixBackground = _showMatrixBackground.asStateFlow()
 
     fun setThemeMode(mode: String) {
@@ -283,25 +283,25 @@ class TobaccoViewModel(
     }
 
     fun resetUiCustomization() {
-        _themeMode.value = "SYSTEM"
-        _customColor.value = 0xFF10B981.toInt()
+        _themeMode.value = "DARK"
+        _customColor.value = 0xFF34D399.toInt()
         _fontSizeScale.value = 1.0f
         _paddingScale.value = 1.0f
         _buttonHeight.value = 56
         _cornerRadius.value = 16
         _customTextColor.value = 0
         _customBackgroundColor.value = 0
-        _showMatrixBackground.value = true
+        _showMatrixBackground.value = false
         appPrefs.edit {
-            putString("theme_mode", "SYSTEM")
-            putInt("custom_color", 0xFF10B981.toInt())
+            putString("theme_mode", "DARK")
+            putInt("custom_color", 0xFF34D399.toInt())
             putFloat("ui_font_size_scale", 1.0f)
             putFloat("ui_padding_scale", 1.0f)
             putInt("ui_button_height", 56)
             putInt("ui_corner_radius", 16)
             putInt("ui_custom_text_color", 0)
             putInt("ui_custom_bg_color", 0)
-            putBoolean("ui_show_matrix_bg", true)
+            putBoolean("ui_show_matrix_bg", false)
         }
         triggerAutoSync()
     }

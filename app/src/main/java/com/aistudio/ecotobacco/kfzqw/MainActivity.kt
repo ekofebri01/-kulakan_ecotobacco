@@ -188,7 +188,9 @@ fun AppNavigation(
     } else {
         BackHandler(enabled = !isSettingsOpen && currentRoute != Routes.HOME) {
             when (currentRoute) {
-                Routes.RECEIPT_SCANNER -> currentRoute = Routes.TRANSACTION_ENTRY
+                Routes.RECEIPT_SCANNER -> {
+                    currentRoute = if (previousRoute == Routes.HOME) Routes.HOME else Routes.TRANSACTION_ENTRY
+                }
                 Routes.DEBUG_MENU -> currentRoute = previousRoute
                 else -> {
                     scannedResult = null
@@ -284,6 +286,10 @@ fun AppNavigation(
                         onNavigateToProcurement = {
                             previousRoute = Routes.HOME
                             currentRoute = Routes.PROCUREMENT_PLANNING
+                        },
+                        onNavigateToScanner = {
+                            previousRoute = Routes.HOME
+                            currentRoute = Routes.RECEIPT_SCANNER
                         }
                     )
                 }
@@ -293,6 +299,7 @@ fun AppNavigation(
                         viewModel = viewModel,
                         scannedResult = scannedResult,
                         onNavigateToScanner = {
+                            previousRoute = Routes.TRANSACTION_ENTRY
                             currentRoute = Routes.RECEIPT_SCANNER
                         },
                         onNavigateBack = {
@@ -305,7 +312,7 @@ fun AppNavigation(
                 Routes.RECEIPT_SCANNER -> {
                     ReceiptScannerScreen(
                         onNavigateBack = {
-                            currentRoute = Routes.TRANSACTION_ENTRY
+                            currentRoute = if (previousRoute == Routes.HOME) Routes.HOME else Routes.TRANSACTION_ENTRY
                         },
                         onScanComplete = { result ->
                             scannedResult = result
@@ -371,7 +378,11 @@ fun AppNavigation(
                         },
                         onNavigateToSettings = { isSettingsOpen = true },
                         onNavigateToDebug = { currentRoute = Routes.DEBUG_MENU },
-                        onNavigateToProcurement = { currentRoute = Routes.PROCUREMENT_PLANNING }
+                        onNavigateToProcurement = { currentRoute = Routes.PROCUREMENT_PLANNING },
+                        onNavigateToScanner = {
+                            previousRoute = Routes.HOME
+                            currentRoute = Routes.RECEIPT_SCANNER
+                        }
                     )
                 }
             }

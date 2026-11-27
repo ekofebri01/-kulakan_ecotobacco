@@ -90,14 +90,14 @@ private val CURATED_PRESETS = listOf(
     ThemePreset(
         id = "eco_default",
         name = "Eco Default",
-        mode = "SYSTEM",
-        accent = 0xFF10B981.toInt(),
+        mode = "DARK",
+        accent = 0xFF34D399.toInt(),
         background = 0,
         text = 0,
         cornerRadius = 16,
-        matrix = true,
-        previewBg = Color(0xFFECFDF5),
-        previewAccent = Color(0xFF10B981)
+        matrix = false,
+        previewBg = Color(0xFF0B0F0D),
+        previewAccent = Color(0xFF34D399)
     ),
     ThemePreset(
         id = "amber_klasik",

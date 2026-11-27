@@ -37,26 +37,26 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = WarmAmber,
-    onPrimary = Color(0xFF451A03),
-    primaryContainer = WarmAmberContainer,
-    onPrimaryContainer = WarmOnAmberContainer,
-    secondary = Color(0xFFD6D3D1),
-    onSecondary = Color(0xFF292524),
-    secondaryContainer = Color(0xFF44403C),
-    onSecondaryContainer = Color(0xFFF5F5F4),
-    background = LeafCharcoalBg,
-    onBackground = LeafText,
-    surface = LeafCharcoalCard,
-    onSurface = LeafText,
-    surfaceVariant = Color(0xFF252B28),
-    onSurfaceVariant = LeafSubtext,
-    outline = LeafCharcoalBorder,
-    outlineVariant = LeafCharcoalBorder,
-    tertiary = LeafSuccess,
-    onTertiary = Color(0xFF064E3B),
-    tertiaryContainer = LeafSuccessContainer,
-    onTertiaryContainer = Color(0xFFD1FAE5)
+    primary = Color(0xFF34D399),
+    onPrimary = Color(0xFF052316),
+    primaryContainer = Color(0xFF133B2A),
+    onPrimaryContainer = Color(0xFFD1FAE5),
+    secondary = Color(0xFF10B981),
+    onSecondary = Color(0xFF052316),
+    secondaryContainer = Color(0xFF132D22),
+    onSecondaryContainer = Color(0xFFD1FAE5),
+    tertiary = Color(0xFFF59E0B),
+    onTertiary = Color(0xFF271700),
+    tertiaryContainer = Color(0xFF2A2110),
+    onTertiaryContainer = Color(0xFFFEF3C7),
+    background = Color(0xFF0B0F0D),
+    onBackground = Color(0xFFF4F7F5),
+    surface = Color(0xFF141A17),
+    onSurface = Color(0xFFF4F7F5),
+    surfaceVariant = Color(0xFF1B231F),
+    onSurfaceVariant = Color(0xFF8C9A92),
+    outline = Color(0xFF242E28),
+    outlineVariant = Color(0xFF242E28)
 )
 
 private val CyberColorScheme = darkColorScheme(
@@ -146,7 +146,7 @@ fun EcoTobaccoTheme(
 
     if (customColor != 0) {
         val accent = Color(customColor)
-        val onAccent = if (accent.luminance() > 0.55f) Color(0xFF0F172A) else Color.White
+        val onAccent = if (accent.luminance() > 0.42f) Color(0xFF052316) else Color.White
         val container = accent.copy(alpha = if (effectiveDark) 0.24f else 0.14f)
         val onContainer = if (effectiveDark) {
             Color(0xFFF8FAFC)

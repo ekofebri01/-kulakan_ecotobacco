@@ -1,5 +1,16 @@
 # Changelog Eco Tobacco
 
+## v5.0 (Build 22) — 27 Nov 2026
+**Perombakan UI Beranda & Input Kulakan, serta Dialog Tambah Produk 1 Halaman**
+
+### What's New
+- **Desain Baru Beranda Hijau Mint**: Tampilan Beranda dirombak lebih bersih dan modern dengan kartu total kulakan bulanan zamrud, statistik transaksi & varian produk, kartu status Cloud Sync, Navigasi Cepat ringkas (*Input Kulakan* & *Rencana Baru* tanpa kartu ganda), serta bilah navigasi bawah mengambang dengan tombol Pindai di tengah.
+- **Tampilan Baru Input Kulakan**: Halaman Input Kulakan kini tampil lebih rapi dengan kartu Scan Nota Otomatis OCR (Pindai & Galeri), ringkasan nota langsung, chip pengepul tersusun rapi, pilihan satuan unit cepat, dukungan pecahan `0,5`, serta bilah total & simpan di bagian bawah.
+- **Tambah Produk Baru 1 Halaman Tanpa Scroll**: Dialog tambah produk di menu Database kini lebih lebar dan ringkas sehingga seluruh kolom input, chip sub kategori, estimasi laba, satuan beli/jual, dan tombol Simpan tampil lengkap dalam satu layar.
+- **Bagikan Rencana Kulakan Lebih Ringkas**: Menghilangkan pemilih sub kategori pada dialog bagikan rencana kulakan agar daftar belanja lebih cepat disalin dan dibagikan.
+
+---
+
 ## v4.9 (Build 21) — 26 Nov 2026
 **Kustomisasi Tema Lengkap, Pengaturan Slide, Updater In-App Beranimasi, & Perbaikan Cloud Backup**
 
