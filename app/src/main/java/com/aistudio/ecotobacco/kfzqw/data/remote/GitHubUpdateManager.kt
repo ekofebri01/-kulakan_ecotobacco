@@ -28,6 +28,8 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.net.URLDecoder
+import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
 data class GitHubReleaseInfo(
@@ -91,9 +93,7 @@ class GitHubUpdateManager(private val context: Context) {
     private val _updateState = MutableStateFlow<InAppUpdateState>(InAppUpdateState.Idle)
     val updateState: StateFlow<InAppUpdateState> = _updateState.asStateFlow()
 
-    private val _targetRepo = MutableStateFlow(
-        prefs.getString(PREF_GITHUB_REPO, DEFAULT_REPO)?.takeIf { it.isNotBlank() } ?: DEFAULT_REPO
-    )
+    private val _targetRepo = MutableStateFlow(loadInitialRepo())
     val targetRepo: StateFlow<String> = _targetRepo.asStateFlow()
 
     private val _autoCheckEnabled = MutableStateFlow(
@@ -193,11 +193,168 @@ class GitHubUpdateManager(private val context: Context) {
     }
 
     companion object {
-        const val DEFAULT_REPO = "ekofebriarianto/eco-tobacco"
+        const val DEFAULT_REPO = "ekofebri01/-kulakan_ecotobacco"
+        private const val LEGACY_DEFAULT_REPO = "ekofebriarianto/eco-tobacco"
         const val PREF_GITHUB_REPO = "github_repo_target"
         const val PREF_AUTO_CHECK_ENABLED = "auto_check_update_enabled"
         const val PREF_LAST_CHECK_TIME = "last_update_check_time"
         const val PREF_PENDING_APK_PATH = "pending_install_apk_path"
+
+        internal data class ParsedApkAsset(
+            val downloadUrl: String,
+            val fileName: String,
+            val sizeBytes: Long
+        )
+
+        internal data class ParsedAtomRelease(
+            val title: String,
+            val updatedAt: String,
+            val releaseNotes: String
+        )
+
+        internal fun sanitizeRepo(rawRepo: String): String {
+            val cleaned = rawRepo.trim()
+                .replace(Regex("""^https?://(www\.)?github\.com/""", RegexOption.IGNORE_CASE), "")
+                .replace(Regex("""^github\.com/""", RegexOption.IGNORE_CASE), "")
+                .substringBefore("?")
+                .substringBefore("#")
+                .removeSuffix(".git")
+                .trim('/')
+            if (cleaned.isBlank()) return ""
+            val parts = cleaned.split('/').filter { it.isNotBlank() }
+            return if (parts.size >= 2) "${parts[0]}/${parts[1]}" else cleaned
+        }
+
+        internal fun extractTagFromReleaseUrl(url: String): String {
+            val idx = url.indexOf("/releases/tag/")
+            if (idx == -1) return ""
+            val rawTag = url.substring(idx + "/releases/tag/".length)
+                .substringBefore("?")
+                .substringBefore("#")
+                .trim('/')
+            return try {
+                URLDecoder.decode(rawTag, "UTF-8")
+            } catch (_: Exception) {
+                rawTag
+            }
+        }
+
+        internal fun parseApkAssetFromExpandedAssetsHtml(html: String, repo: String): ParsedApkAsset? {
+            if (html.isBlank()) return null
+            val hrefRegex = Regex("""href=["']([^"']*?/releases/download/[^"']+?\.apk)["']""", RegexOption.IGNORE_CASE)
+            val match = hrefRegex.find(html) ?: return null
+            val rawHref = match.groupValues[1].trim()
+            val fullUrl = when {
+                rawHref.startsWith("http://", ignoreCase = true) || rawHref.startsWith("https://", ignoreCase = true) -> rawHref
+                rawHref.startsWith("/") -> "https://github.com$rawHref"
+                else -> "https://github.com/$repo/$rawHref"
+            }
+            val rawName = fullUrl.substringAfterLast('/').substringBefore('?').substringBefore('#')
+            val decodedName = try {
+                URLDecoder.decode(rawName, "UTF-8")
+            } catch (_: Exception) {
+                rawName
+            }.ifBlank { "eco-tobacco-update.apk" }
+
+            // Look for human-readable asset size (e.g., "23.5 MB", "950 KB") near the matching anchor block
+            val tailSlice = html.substring(match.range.last, minOf(html.length, match.range.last + 2500))
+                .substringBefore("</li>")
+            val sizeRegex = Regex(""">(\d+(?:[.,]\d+)?)\s*(GB|MB|KB|Bytes)<""", RegexOption.IGNORE_CASE)
+            val sizeMatch = sizeRegex.find(tailSlice)
+            val parsedSize = if (sizeMatch != null) {
+                val number = sizeMatch.groupValues[1].replace(',', '.').toDoubleOrNull() ?: 0.0
+                val unit = sizeMatch.groupValues[2].uppercase()
+                val multiplier = when (unit) {
+                    "GB" -> 1024L * 1024L * 1024L
+                    "MB" -> 1024L * 1024L
+                    "KB" -> 1024L
+                    else -> 1L
+                }
+                (number * multiplier).toLong()
+            } else {
+                0L
+            }
+
+            return ParsedApkAsset(
+                downloadUrl = fullUrl,
+                fileName = decodedName,
+                sizeBytes = parsedSize
+            )
+        }
+
+        internal fun parseReleaseNotesFromAtomXml(atomXml: String, tagName: String): ParsedAtomRelease? {
+            if (atomXml.isBlank()) return null
+            val entryRegex = Regex("""<entry>([\s\S]*?)</entry>""", RegexOption.IGNORE_CASE)
+            val entries = entryRegex.findAll(atomXml).toList()
+            if (entries.isEmpty()) return null
+
+            val encodedTag = try {
+                URLEncoder.encode(tagName, "UTF-8").replace("+", "%20")
+            } catch (_: Exception) {
+                tagName
+            }
+
+            val matchedEntry = entries.firstOrNull { match ->
+                val block = match.groupValues[1]
+                block.contains("/releases/tag/$tagName\"") ||
+                    block.contains("/releases/tag/$encodedTag\"") ||
+                    block.contains("/$tagName</id>")
+            } ?: entries.first()
+
+            val block = matchedEntry.groupValues[1]
+            val title = Regex("""<title[^>]*>([\s\S]*?)</title>""", RegexOption.IGNORE_CASE)
+                .find(block)?.groupValues?.get(1)?.let { decodeXmlEntities(it).trim() }.orEmpty()
+            val updated = Regex("""<updated>([\s\S]*?)</updated>""", RegexOption.IGNORE_CASE)
+                .find(block)?.groupValues?.get(1)?.trim().orEmpty()
+            val rawContent = Regex("""<content[^>]*>([\s\S]*?)</content>""", RegexOption.IGNORE_CASE)
+                .find(block)?.groupValues?.get(1).orEmpty()
+
+            val decodedHtml = decodeXmlEntities(rawContent)
+            val plainNotes = decodedHtml
+                .replace(Regex("""<li[^>]*>""", RegexOption.IGNORE_CASE), "\n- ")
+                .replace(Regex("""</?(?:p|div|br|h[1-6]|tr|ul|ol|hr)[^>]*>""", RegexOption.IGNORE_CASE), "\n")
+                .replace(Regex("""<[^>]+>"""), "")
+                .lines()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .joinToString("\n")
+
+            return ParsedAtomRelease(
+                title = title,
+                updatedAt = updated,
+                releaseNotes = plainNotes
+            )
+        }
+
+        private fun decodeXmlEntities(text: String): String {
+            return text
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&amp;", "&")
+                .replace("&quot;", "\"")
+                .replace("&#39;", "'")
+                .replace("&apos;", "'")
+                .replace("&nbsp;", " ")
+        }
+
+        internal fun isVersionNewer(newVerStr: String, currentVerStr: String): Boolean {
+            return try {
+                val newParts = newVerStr.replace(Regex("[^0-9.]"), "").split(".").filter { it.isNotEmpty() }.map { it.toIntOrNull() ?: 0 }
+                val currentParts = currentVerStr.replace(Regex("[^0-9.]"), "").split(".").filter { it.isNotEmpty() }.map { it.toIntOrNull() ?: 0 }
+                if (newParts.isEmpty()) return false
+
+                val maxLen = maxOf(newParts.size, currentParts.size)
+                for (i in 0 until maxLen) {
+                    val n = if (i < newParts.size) newParts[i] else 0
+                    val c = if (i < currentParts.size) currentParts[i] else 0
+                    if (n > c) return true
+                    if (n < c) return false
+                }
+                false
+            } catch (_: Exception) {
+                false
+            }
+        }
 
         /**
          * Hapus otomatis semua sisa file installer APK di cache agar memori HP tidak penuh.
@@ -245,15 +402,23 @@ class GitHubUpdateManager(private val context: Context) {
         }
     }
 
+    private fun loadInitialRepo(): String {
+        val rawSaved = prefs.getString(PREF_GITHUB_REPO, null)
+        val sanitized = sanitizeRepo(rawSaved.orEmpty())
+        return if (sanitized.isBlank() || sanitized.equals(LEGACY_DEFAULT_REPO, ignoreCase = true)) {
+            if (!rawSaved.isNullOrBlank()) {
+                prefs.edit().putString(PREF_GITHUB_REPO, DEFAULT_REPO).apply()
+            }
+            DEFAULT_REPO
+        } else {
+            sanitized
+        }
+    }
+
     fun getTargetRepository(): String = _targetRepo.value
 
     fun setTargetRepository(repo: String) {
-        val sanitized = repo.trim()
-            .removePrefix("https://github.com/")
-            .removePrefix("http://github.com/")
-            .removePrefix("github.com/")
-            .trim('/')
-            .ifBlank { DEFAULT_REPO }
+        val sanitized = sanitizeRepo(repo).ifBlank { DEFAULT_REPO }
         prefs.edit().putString(PREF_GITHUB_REPO, sanitized).apply()
         _targetRepo.value = sanitized
     }
@@ -309,7 +474,8 @@ class GitHubUpdateManager(private val context: Context) {
     }
 
     /**
-     * Memeriksa rilis terbaru dari GitHub API
+     * Memeriksa rilis terbaru dari GitHub API dengan fallback otomatis ke GitHub Web Releases
+     * apabila REST API terkena rate limit (HTTP 403/429).
      */
     suspend fun checkForUpdates(currentVersion: String, silent: Boolean = false): GitHubReleaseInfo? {
         if (_updateState.value is InAppUpdateState.Checking ||
@@ -334,81 +500,73 @@ class GitHubUpdateManager(private val context: Context) {
                     .header("User-Agent", "EcoTobacco-Android")
                     .build()
 
+                var release: GitHubReleaseInfo? = null
+                var apiCode = -1
+                var apiBody = ""
+                var rateLimitRemaining: String? = null
+
                 client.newCall(request).execute().use { response ->
                     prefs.edit().putLong(PREF_LAST_CHECK_TIME, System.currentTimeMillis()).apply()
+                    apiCode = response.code
+                    rateLimitRemaining = response.header("X-RateLimit-Remaining")
+                    apiBody = response.body?.string().orEmpty()
 
-                    if (!response.isSuccessful) {
-                        val code = response.code
+                    if (response.isSuccessful && apiBody.isNotBlank()) {
+                        release = parseReleaseFromApiJson(apiBody)
+                    }
+                }
+
+                if (release == null) {
+                    val shouldTryWebFallback = apiCode == 403 || apiCode == 429 || apiCode in 500..599 ||
+                        (apiCode in 200..299 && apiBody.isBlank())
+
+                    if (shouldTryWebFallback) {
+                        AppLogger.d("GitHub API mengembalikan HTTP $apiCode (rateLimitRemaining=$rateLimitRemaining). Mencoba fallback GitHub Web Releases untuk '$repo'...")
+                        val webResult = fetchLatestReleaseViaWeb(repo)
+                        if (webResult.release != null) {
+                            release = webResult.release
+                        } else {
+                            if (!silent) {
+                                _updateState.value = InAppUpdateState.Error(
+                                    buildUpdateCheckErrorMessage(
+                                        repo = repo,
+                                        apiCode = apiCode,
+                                        apiBody = apiBody,
+                                        rateLimitRemaining = rateLimitRemaining,
+                                        webErrorCode = webResult.errorCode,
+                                        webErrorReason = webResult.errorMessage
+                                    )
+                                )
+                            }
+                            return@withContext null
+                        }
+                    } else {
                         if (!silent) {
                             _updateState.value = InAppUpdateState.Error(
-                                "Gagal memeriksa update (HTTP $code). Pastikan repository '$repo' publik, memiliki GitHub Release, atau periksa koneksi."
+                                buildUpdateCheckErrorMessage(
+                                    repo = repo,
+                                    apiCode = apiCode,
+                                    apiBody = apiBody,
+                                    rateLimitRemaining = rateLimitRemaining,
+                                    webErrorCode = null,
+                                    webErrorReason = null
+                                )
                             )
                         }
                         return@withContext null
                     }
+                }
 
-                    val responseBody = response.body?.string().orEmpty()
-                    if (responseBody.isBlank()) {
-                        if (!silent) {
-                            _updateState.value = InAppUpdateState.Error("Respons dari GitHub kosong.")
-                        }
-                        return@withContext null
+                val resolvedRelease = release ?: return@withContext null
+                val isNewer = isVersionNewer(resolvedRelease.versionName, currentVersion)
+                if (isNewer) {
+                    _updateState.value = InAppUpdateState.UpdateAvailable(resolvedRelease)
+                    return@withContext resolvedRelease
+                } else {
+                    if (!silent) {
+                        _updateState.value = InAppUpdateState.UpToDate
                     }
-
-                    val json = JSONObject(responseBody)
-
-                    val tagName = json.optString("tag_name", "")
-                    val cleanTagName = tagName.removePrefix("v").removePrefix("V").trim()
-                    val title = json.optString("name", "Pembaruan Baru").ifBlank { "Pembaruan Baru" }
-                    val body = json.optString("body", "Peningkatan performa dan perbaikan sistem.")
-                        .ifBlank { "Peningkatan performa dan perbaikan sistem." }
-                    val publishedAt = json.optString("published_at", "")
-                    val htmlUrl = json.optString("html_url", "")
-
-                    var downloadUrl = ""
-                    var apkFileName = "eco-tobacco-v$cleanTagName.apk"
-                    var apkSize = 0L
-
-                    val assetsArray = json.optJSONArray("assets")
-                    if (assetsArray != null && assetsArray.length() > 0) {
-                        for (i in 0 until assetsArray.length()) {
-                            val asset = assetsArray.getJSONObject(i)
-                            val name = asset.optString("name", "")
-                            if (name.endsWith(".apk", ignoreCase = true)) {
-                                downloadUrl = asset.optString("browser_download_url", "")
-                                apkFileName = name
-                                apkSize = asset.optLong("size", 0L)
-                                break
-                            }
-                        }
-                    }
-
-                    val hasDirectApk = downloadUrl.isNotEmpty()
-                    val resolvedDownloadUrl = if (hasDirectApk) downloadUrl else htmlUrl
-
-                    val release = GitHubReleaseInfo(
-                        tagName = tagName,
-                        versionName = cleanTagName,
-                        title = title,
-                        releaseNotes = body,
-                        publishedAt = publishedAt,
-                        downloadUrl = resolvedDownloadUrl,
-                        apkFileName = apkFileName,
-                        apkSize = apkSize,
-                        htmlUrl = htmlUrl,
-                        hasDirectApk = hasDirectApk
-                    )
-
-                    val isNewer = isVersionNewer(cleanTagName, currentVersion)
-                    if (isNewer) {
-                        _updateState.value = InAppUpdateState.UpdateAvailable(release)
-                        return@withContext release
-                    } else {
-                        if (!silent) {
-                            _updateState.value = InAppUpdateState.UpToDate
-                        }
-                        return@withContext null
-                    }
+                    return@withContext null
                 }
             } catch (e: Exception) {
                 Log.e("GitHubUpdateManager", "Error checking update", e)
@@ -417,6 +575,178 @@ class GitHubUpdateManager(private val context: Context) {
                 }
                 return@withContext null
             }
+        }
+    }
+
+    private fun parseReleaseFromApiJson(responseBody: String): GitHubReleaseInfo? {
+        return try {
+            val json = JSONObject(responseBody)
+            val tagName = json.optString("tag_name", "")
+            if (tagName.isBlank()) return null
+
+            val cleanTagName = tagName.removePrefix("v").removePrefix("V").trim()
+            val title = json.optString("name", "Pembaruan Baru").ifBlank { "Pembaruan Baru" }
+            val body = json.optString("body", "Peningkatan performa dan perbaikan sistem.")
+                .ifBlank { "Peningkatan performa dan perbaikan sistem." }
+            val publishedAt = json.optString("published_at", "")
+            val htmlUrl = json.optString("html_url", "")
+
+            var downloadUrl = ""
+            var apkFileName = "eco-tobacco-v$cleanTagName.apk"
+            var apkSize = 0L
+
+            val assetsArray = json.optJSONArray("assets")
+            if (assetsArray != null && assetsArray.length() > 0) {
+                for (i in 0 until assetsArray.length()) {
+                    val asset = assetsArray.getJSONObject(i)
+                    val name = asset.optString("name", "")
+                    if (name.endsWith(".apk", ignoreCase = true)) {
+                        downloadUrl = asset.optString("browser_download_url", "")
+                        apkFileName = name
+                        apkSize = asset.optLong("size", 0L)
+                        break
+                    }
+                }
+            }
+
+            val hasDirectApk = downloadUrl.isNotEmpty()
+            val resolvedDownloadUrl = if (hasDirectApk) downloadUrl else htmlUrl
+
+            GitHubReleaseInfo(
+                tagName = tagName,
+                versionName = cleanTagName,
+                title = title,
+                releaseNotes = body,
+                publishedAt = publishedAt,
+                downloadUrl = resolvedDownloadUrl,
+                apkFileName = apkFileName,
+                apkSize = apkSize,
+                htmlUrl = htmlUrl,
+                hasDirectApk = hasDirectApk
+            )
+        } catch (e: Exception) {
+            Log.w("GitHubUpdateManager", "Gagal mem-parsing JSON GitHub API: ${e.message}")
+            null
+        }
+    }
+
+    private data class WebFallbackResult(
+        val release: GitHubReleaseInfo? = null,
+        val errorCode: Int? = null,
+        val errorMessage: String? = null
+    )
+
+    private fun fetchLatestReleaseViaWeb(repo: String): WebFallbackResult {
+        return try {
+            val webLatestUrl = "https://github.com/$repo/releases/latest"
+            val latestRequest = Request.Builder()
+                .url(webLatestUrl)
+                .header("Accept", "text/html,application/xhtml+xml")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) EcoTobacco-Android")
+                .build()
+
+            var resolvedTag = ""
+            var finalReleaseUrl = webLatestUrl
+
+            client.newCall(latestRequest).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return WebFallbackResult(errorCode = response.code)
+                }
+                finalReleaseUrl = response.request.url.toString()
+                resolvedTag = extractTagFromReleaseUrl(finalReleaseUrl)
+            }
+
+            if (resolvedTag.isBlank()) {
+                return WebFallbackResult(
+                    errorCode = 404,
+                    errorMessage = "Belum ada rilis publik ditemukan di '$repo'."
+                )
+            }
+
+            val cleanTagName = resolvedTag.removePrefix("v").removePrefix("V").trim()
+            val encodedTag = URLEncoder.encode(resolvedTag, "UTF-8").replace("+", "%20")
+
+            // 1. Fetch expanded_assets fragment to discover direct .apk download URL
+            var parsedApk: ParsedApkAsset? = null
+            try {
+                val assetsUrl = "https://github.com/$repo/releases/expanded_assets/$encodedTag"
+                val assetsReq = Request.Builder()
+                    .url(assetsUrl)
+                    .header("Accept", "text/html")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 13) EcoTobacco-Android")
+                    .build()
+                client.newCall(assetsReq).execute().use { assetsResp ->
+                    if (assetsResp.isSuccessful) {
+                        val assetsHtml = assetsResp.body?.string().orEmpty()
+                        parsedApk = parseApkAssetFromExpandedAssetsHtml(assetsHtml, repo)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("GitHubUpdateManager", "Fallback expanded_assets notice: ${e.message}")
+            }
+
+            // 2. Fetch releases.atom feed (best-effort) for title, timestamp, and release notes
+            var parsedAtom: ParsedAtomRelease? = null
+            try {
+                val atomUrl = "https://github.com/$repo/releases.atom"
+                val atomReq = Request.Builder()
+                    .url(atomUrl)
+                    .header("Accept", "application/atom+xml,application/xml,text/xml")
+                    .header("User-Agent", "EcoTobacco-Android")
+                    .build()
+                client.newCall(atomReq).execute().use { atomResp ->
+                    if (atomResp.isSuccessful) {
+                        val atomXml = atomResp.body?.string().orEmpty()
+                        parsedAtom = parseReleaseNotesFromAtomXml(atomXml, resolvedTag)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.w("GitHubUpdateManager", "Fallback releases.atom notice: ${e.message}")
+            }
+
+            val hasDirectApk = parsedApk != null && parsedApk!!.downloadUrl.isNotBlank()
+            val release = GitHubReleaseInfo(
+                tagName = resolvedTag,
+                versionName = cleanTagName,
+                title = parsedAtom?.title?.ifBlank { "Eco Tobacco $resolvedTag" } ?: "Eco Tobacco $resolvedTag",
+                releaseNotes = parsedAtom?.releaseNotes?.ifBlank { "Peningkatan performa dan perbaikan sistem." }
+                    ?: "Peningkatan performa dan perbaikan sistem.",
+                publishedAt = parsedAtom?.updatedAt.orEmpty(),
+                downloadUrl = if (hasDirectApk) parsedApk!!.downloadUrl else finalReleaseUrl,
+                apkFileName = parsedApk?.fileName ?: "EcoTobacco-v$cleanTagName.apk",
+                apkSize = parsedApk?.sizeBytes ?: 0L,
+                htmlUrl = finalReleaseUrl,
+                hasDirectApk = hasDirectApk
+            )
+            WebFallbackResult(release = release)
+        } catch (e: Exception) {
+            Log.w("GitHubUpdateManager", "Fallback GitHub Web Releases gagal: ${e.message}")
+            WebFallbackResult(errorMessage = e.localizedMessage)
+        }
+    }
+
+    private fun buildUpdateCheckErrorMessage(
+        repo: String,
+        apiCode: Int,
+        apiBody: String,
+        rateLimitRemaining: String?,
+        webErrorCode: Int?,
+        webErrorReason: String?
+    ): String {
+        val isRateLimited = apiCode == 429 ||
+            (apiCode == 403 && (rateLimitRemaining == "0" || apiBody.contains("rate limit", ignoreCase = true)))
+
+        return when {
+            webErrorCode == 404 || apiCode == 404 ->
+                "Repository '$repo' tidak ditemukan, bersifat private, atau belum memiliki GitHub Release."
+            isRateLimited ->
+                "Batas permintaan GitHub API pada IP jaringan ini tercapai (HTTP $apiCode) dan fallback web gagal" +
+                    (webErrorCode?.let { " (HTTP $it)" } ?: "") +
+                    ". Coba beberapa saat lagi atau ganti jaringan."
+            !webErrorReason.isNullOrBlank() ->
+                "Gagal memeriksa update ($webErrorReason). Periksa koneksi atau repository '$repo'."
+            else ->
+                "Gagal memeriksa update (HTTP $apiCode). Pastikan repository '$repo' publik, memiliki GitHub Release, atau periksa koneksi."
         }
     }
 
@@ -726,21 +1056,4 @@ class GitHubUpdateManager(private val context: Context) {
         }
     }
 
-    private fun isVersionNewer(newVerStr: String, currentVerStr: String): Boolean {
-        try {
-            val newParts = newVerStr.replace(Regex("[^0-9.]"), "").split(".").map { it.toIntOrNull() ?: 0 }
-            val currentParts = currentVerStr.replace(Regex("[^0-9.]"), "").split(".").map { it.toIntOrNull() ?: 0 }
-
-            val maxLen = maxOf(newParts.size, currentParts.size)
-            for (i in 0 until maxLen) {
-                val n = if (i < newParts.size) newParts[i] else 0
-                val c = if (i < currentParts.size) currentParts[i] else 0
-                if (n > c) return true
-                if (n < c) return false
-            }
-            return false
-        } catch (e: Exception) {
-            return false
-        }
-    }
 }

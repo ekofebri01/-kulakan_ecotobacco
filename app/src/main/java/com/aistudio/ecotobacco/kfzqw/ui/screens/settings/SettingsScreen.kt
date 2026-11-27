@@ -493,7 +493,7 @@ fun SettingsScreen(
                         value = repoSettingInput,
                         onValueChange = { repoSettingInput = it },
                         label = { Text("Repository Target") },
-                        placeholder = { Text("ekofebriarianto/eco-tobacco") },
+                        placeholder = { Text("ekofebri01/-kulakan_ecotobacco") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )

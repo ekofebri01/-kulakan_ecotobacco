@@ -1,5 +1,14 @@
 # Changelog Eco Tobacco
 
+## v5.1 (Build 23) — 27 Nov 2026
+**Perbaikan Deteksi Update GitHub Anti Rate-Limit (HTTP 403)**
+
+### What's New
+- **Fallback Otomatis GitHub Web Releases**: Pemeriksaan pembaruan kini otomatis beralih ke halaman rilis web GitHub & feed `releases.atom` saat GitHub API terkena batas kuota IP jaringan (HTTP 403 / 429), sehingga update tetap terdeteksi lancar di jaringan seluler maupun Wi-Fi bersama.
+- **Penyelarasan Repository Bawaan**: Target repository bawaan dan placeholder pengaturan kini otomatis diarahkan ke `ekofebri01/-kulakan_ecotobacco` beserta pembersihan URL `.git`.
+
+---
+
 ## v5.0 (Build 22) — 27 Nov 2026
 **Perombakan UI Beranda & Input Kulakan, serta Dialog Tambah Produk 1 Halaman**
 
